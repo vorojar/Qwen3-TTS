@@ -107,7 +107,7 @@
                 </h3>
                 <textarea id="text-custom" rows="3"
                     class="w-full px-4 py-3 bg-white border border-warm-gray rounded-xl text-charcoal placeholder-charcoal/40 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all resize-none"
-                    data-i18n-placeholder="input.placeholder">你好，我是通义千问语音合成模型，很高兴认识你！</textarea>
+                    data-i18n-placeholder="input.placeholder" data-i18n-value="defaultText.custom"></textarea>
             </div>
 
             <!-- 语音设置 -->
@@ -119,17 +119,8 @@
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-charcoal/70 mb-2" data-i18n="settings.speaker">说话人</label>
-                        <select id="speaker"
+                        <select id="speaker" data-i18n-options="speakers"
                             class="w-full px-4 py-3 bg-white border border-warm-gray rounded-xl text-charcoal focus:outline-none focus:border-accent transition-all">
-                            <option value="vivian">Vivian (女声-中文)</option>
-                            <option value="uncle_fu">Uncle Fu (男声-中文)</option>
-                            <option value="aiden">Aiden (男声-英文)</option>
-                            <option value="serena">Serena (女声-英文)</option>
-                            <option value="ono_anna">Ono Anna (女声-日文)</option>
-                            <option value="sohee">Sohee (女声-韩文)</option>
-                            <option value="dylan">Dylan (男声)</option>
-                            <option value="eric">Eric (男声)</option>
-                            <option value="ryan">Ryan (男声)</option>
                         </select>
                     </div>
                     <div>
@@ -225,7 +216,7 @@
                         <label class="block text-sm font-medium text-charcoal/70 mb-2" data-i18n="design.textLabel">要合成的文本</label>
                         <textarea id="text-design" rows="2"
                             class="w-full px-4 py-3 bg-white border border-warm-gray rounded-xl text-charcoal placeholder-charcoal/40 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all resize-none"
-                            data-i18n-placeholder="input.placeholder">你好，我是根据你的描述生成的声音。</textarea>
+                            data-i18n-placeholder="input.placeholder" data-i18n-value="defaultText.design"></textarea>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-charcoal/70 mb-2" data-i18n="settings.language">语言</label>
@@ -333,7 +324,7 @@
                         <label class="block text-sm font-medium text-charcoal/70 mb-2" data-i18n="design.textLabel">要合成的文本</label>
                         <textarea id="text-clone" rows="2"
                             class="w-full px-4 py-3 bg-white border border-warm-gray rounded-xl text-charcoal placeholder-charcoal/40 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all resize-none"
-                            data-i18n-placeholder="clone.synthPlaceholder">你好，这是使用语音克隆技术生成的语音。</textarea>
+                            data-i18n-placeholder="clone.synthPlaceholder" data-i18n-value="defaultText.clone"></textarea>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-charcoal/70 mb-2" data-i18n="settings.language">语言</label>
@@ -518,6 +509,20 @@
                 subtitle: '语音合成服务',
                 'nav.demo': '在线试用',
                 'nav.api': 'API 文档',
+                'defaultText.custom': '你好，我是通义千问语音合成模型，很高兴认识你！',
+                'defaultText.design': '你好，我是根据你的描述生成的声音。',
+                'defaultText.clone': '你好，这是使用语音克隆技术生成的语音。',
+                'speakers': [
+                    { value: 'vivian', label: 'Vivian (女声-中文)' },
+                    { value: 'uncle_fu', label: 'Uncle Fu (男声-中文)' },
+                    { value: 'aiden', label: 'Aiden (男声-英文)' },
+                    { value: 'serena', label: 'Serena (女声-英文)' },
+                    { value: 'ono_anna', label: 'Ono Anna (女声-日文)' },
+                    { value: 'sohee', label: 'Sohee (女声-韩文)' },
+                    { value: 'dylan', label: 'Dylan (男声)' },
+                    { value: 'eric', label: 'Eric (男声)' },
+                    { value: 'ryan', label: 'Ryan (男声)' }
+                ],
                 'tab.preset': '预设说话人',
                 'tab.design': '声音设计',
                 'tab.clone': '语音克隆',
@@ -609,6 +614,20 @@
                 subtitle: 'Text-to-Speech Service',
                 'nav.demo': 'Demo',
                 'nav.api': 'API Docs',
+                'defaultText.custom': 'Hello, I am the Qwen text-to-speech model. Nice to meet you!',
+                'defaultText.design': 'Hello, this voice is generated based on your description.',
+                'defaultText.clone': 'Hello, this speech is generated using voice cloning technology.',
+                'speakers': [
+                    { value: 'vivian', label: 'Vivian (Female-Chinese)' },
+                    { value: 'uncle_fu', label: 'Uncle Fu (Male-Chinese)' },
+                    { value: 'aiden', label: 'Aiden (Male-English)' },
+                    { value: 'serena', label: 'Serena (Female-English)' },
+                    { value: 'ono_anna', label: 'Ono Anna (Female-Japanese)' },
+                    { value: 'sohee', label: 'Sohee (Female-Korean)' },
+                    { value: 'dylan', label: 'Dylan (Male)' },
+                    { value: 'eric', label: 'Eric (Male)' },
+                    { value: 'ryan', label: 'Ryan (Male)' }
+                ],
                 'tab.preset': 'Preset Voices',
                 'tab.design': 'Voice Design',
                 'tab.clone': 'Voice Clone',
@@ -718,6 +737,23 @@
             document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
                 const key = el.getAttribute('data-i18n-placeholder');
                 el.placeholder = t(key);
+            });
+            // 更新 value (textarea/input 默认值)
+            document.querySelectorAll('[data-i18n-value]').forEach(el => {
+                const key = el.getAttribute('data-i18n-value');
+                el.value = t(key);
+            });
+            // 更新 select options
+            document.querySelectorAll('[data-i18n-options]').forEach(el => {
+                const key = el.getAttribute('data-i18n-options');
+                const options = i18n[currentLang][key] || i18n['zh'][key];
+                if (Array.isArray(options)) {
+                    const currentValue = el.value;
+                    el.innerHTML = options.map(opt =>
+                        `<option value="${opt.value}">${opt.label}</option>`
+                    ).join('');
+                    if (currentValue) el.value = currentValue;
+                }
             });
             // 更新页面标题
             document.title = 'Qwen3-TTS - ' + t('subtitle');
