@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Qwen3-TTS</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -269,7 +270,7 @@
                         oninput="updateCharCount()"
                     ></textarea>
                     <!-- 生成进度视图 (生成时显示) -->
-                    <div id="progress-view" class="hidden input-field flex-1 overflow-y-auto leading-relaxed"></div>
+                    <div id="progress-view" class="hidden input-field flex-1 overflow-y-auto text-base" style="line-height:1.8"></div>
 
                     <!-- 操作栏 -->
                     <div class="flex items-center justify-between mt-4">
@@ -304,13 +305,22 @@
                             <div class="text-charcoal font-medium" id="stats-chars">-</div>
                             <div class="text-charcoal/50 text-xs" id="stats-speed">-</div>
                         </div>
-                        <button id="download-btn" onclick="downloadAudio()" class="ml-4 p-3 bg-accent hover:bg-accent-dark text-white rounded-lg transition-colors" title="下载">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                <polyline points="7 10 12 15 17 10"></polyline>
-                                <line x1="12" y1="15" x2="12" y2="3"></line>
-                            </svg>
-                        </button>
+                        <div class="relative ml-4">
+                            <button id="download-btn" onclick="toggleDownloadMenu()" class="p-3 bg-accent hover:bg-accent-dark text-white rounded-lg transition-colors flex items-center gap-1" title="下载">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="7 10 12 15 17 10"></polyline>
+                                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                                </svg>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M6 9l6 6 6-6"></path>
+                                </svg>
+                            </button>
+                            <div id="download-menu" class="hidden absolute right-0 bottom-full mb-2 bg-white rounded-lg shadow-lg border border-warm-gray overflow-hidden z-10">
+                                <button onclick="downloadAudio('wav')" class="w-full px-4 py-2 text-left text-sm hover:bg-cream font-medium">WAV</button>
+                                <button onclick="downloadAudio('mp3')" class="w-full px-4 py-2 text-left text-sm hover:bg-cream font-medium border-t border-warm-gray">MP3</button>
+                            </div>
+                        </div>
                     </div>
                     <audio id="audio-element" class="hidden"></audio>
                 </div>
@@ -1385,15 +1395,154 @@
             return `${m}:${s.toString().padStart(2, '0')}`;
         }
 
-        function downloadAudio() {
+        function toggleDownloadMenu() {
+            const menu = document.getElementById('download-menu');
+            menu.classList.toggle('hidden');
+        }
+
+        // 点击其他地方关闭下载菜单
+        document.addEventListener('click', (e) => {
+            const menu = document.getElementById('download-menu');
+            const btn = document.getElementById('download-btn');
+            if (menu && !menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.classList.add('hidden');
+            }
+        });
+
+        async function downloadAudio(format = 'wav') {
             if (!audioElement.src) return;
 
-            const a = document.createElement('a');
-            a.href = audioElement.src;
-            a.download = `tts_${Date.now()}.wav`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            // 关闭菜单
+            document.getElementById('download-menu').classList.add('hidden');
+
+            const timestamp = Date.now();
+
+            if (format === 'wav') {
+                const a = document.createElement('a');
+                a.href = audioElement.src;
+                a.download = `tts_${timestamp}.wav`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            } else if (format === 'mp3') {
+                try {
+                    // 显示转换中状态
+                    const btn = document.getElementById('download-btn');
+                    const originalHTML = btn.innerHTML;
+                    btn.innerHTML = '<span class="text-sm">转换中...</span>';
+                    btn.disabled = true;
+
+                    // 获取 WAV 数据
+                    const response = await fetch(audioElement.src);
+                    const arrayBuffer = await response.arrayBuffer();
+
+                    // 解析 WAV
+                    const wavData = parseWav(arrayBuffer);
+
+                    // 转换为 MP3
+                    const mp3Blob = await convertToMp3(wavData);
+
+                    // 下载
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(mp3Blob);
+                    a.download = `tts_${timestamp}.mp3`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+
+                    // 恢复按钮
+                    btn.innerHTML = originalHTML;
+                    btn.disabled = false;
+                } catch (error) {
+                    console.error('MP3 转换失败:', error);
+                    alert('MP3 转换失败，请下载 WAV 格式');
+                    const btn = document.getElementById('download-btn');
+                    btn.innerHTML = originalHTML;
+                    btn.disabled = false;
+                }
+            }
+        }
+
+        // 解析 WAV 文件
+        function parseWav(arrayBuffer) {
+            const dataView = new DataView(arrayBuffer);
+
+            // 读取 WAV 头信息
+            const numChannels = dataView.getUint16(22, true);
+            const sampleRate = dataView.getUint32(24, true);
+            const bitsPerSample = dataView.getUint16(34, true);
+
+            // 找到 data chunk
+            let offset = 12;
+            while (offset < arrayBuffer.byteLength) {
+                const chunkId = String.fromCharCode(
+                    dataView.getUint8(offset),
+                    dataView.getUint8(offset + 1),
+                    dataView.getUint8(offset + 2),
+                    dataView.getUint8(offset + 3)
+                );
+                const chunkSize = dataView.getUint32(offset + 4, true);
+
+                if (chunkId === 'data') {
+                    offset += 8;
+                    break;
+                }
+                offset += 8 + chunkSize;
+            }
+
+            // 读取 PCM 数据
+            const samples = new Int16Array(arrayBuffer, offset);
+
+            return { samples, sampleRate, numChannels };
+        }
+
+        // 转换为 MP3
+        function convertToMp3(wavData) {
+            return new Promise((resolve) => {
+                const { samples, sampleRate, numChannels } = wavData;
+
+                const mp3encoder = new lamejs.Mp3Encoder(numChannels, sampleRate, 128);
+                const mp3Data = [];
+
+                const blockSize = 1152;
+                const numSamples = samples.length / numChannels;
+
+                if (numChannels === 1) {
+                    // 单声道
+                    for (let i = 0; i < numSamples; i += blockSize) {
+                        const chunk = samples.subarray(i, Math.min(i + blockSize, numSamples));
+                        const mp3buf = mp3encoder.encodeBuffer(chunk);
+                        if (mp3buf.length > 0) {
+                            mp3Data.push(mp3buf);
+                        }
+                    }
+                } else {
+                    // 立体声 - 分离左右声道
+                    const left = new Int16Array(numSamples);
+                    const right = new Int16Array(numSamples);
+                    for (let i = 0; i < numSamples; i++) {
+                        left[i] = samples[i * 2];
+                        right[i] = samples[i * 2 + 1];
+                    }
+
+                    for (let i = 0; i < numSamples; i += blockSize) {
+                        const leftChunk = left.subarray(i, Math.min(i + blockSize, numSamples));
+                        const rightChunk = right.subarray(i, Math.min(i + blockSize, numSamples));
+                        const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+                        if (mp3buf.length > 0) {
+                            mp3Data.push(mp3buf);
+                        }
+                    }
+                }
+
+                // 完成编码
+                const end = mp3encoder.flush();
+                if (end.length > 0) {
+                    mp3Data.push(end);
+                }
+
+                resolve(new Blob(mp3Data, { type: 'audio/mp3' }));
+            });
         }
 
         audioElement.addEventListener('timeupdate', () => {
