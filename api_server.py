@@ -71,8 +71,84 @@ MODEL_CONFIGS = {
     },
 }
 
-# 已保存的克隆声音缓存
+# 已保存的克隆声音 prompt 缓存 (voice_id -> VoiceClonePromptItem)
 saved_voice_prompts = {}
+
+
+def save_voice_prompt(voice_id: str, prompt_item):
+    """将 VoiceClonePromptItem 保存到磁盘"""
+    voice_dir = VOICES_DIR / voice_id
+    prompt_path = voice_dir / "prompt.pt"
+
+    # 保存为 dict 格式
+    prompt_data = {
+        "ref_code": prompt_item.ref_code,
+        "ref_spk_embedding": prompt_item.ref_spk_embedding,
+        "x_vector_only_mode": prompt_item.x_vector_only_mode,
+        "icl_mode": prompt_item.icl_mode,
+        "ref_text": prompt_item.ref_text,
+    }
+    torch.save(prompt_data, prompt_path)
+    print(f"[缓存] 已保存 voice prompt: {voice_id}")
+
+
+def load_voice_prompt(voice_id: str):
+    """从磁盘加载 VoiceClonePromptItem"""
+    from qwen_tts.inference.qwen3_tts_model import VoiceClonePromptItem
+
+    voice_dir = VOICES_DIR / voice_id
+    prompt_path = voice_dir / "prompt.pt"
+
+    if not prompt_path.exists():
+        return None
+
+    try:
+        prompt_data = torch.load(prompt_path, weights_only=False)
+        prompt_item = VoiceClonePromptItem(
+            ref_code=prompt_data["ref_code"],
+            ref_spk_embedding=prompt_data["ref_spk_embedding"],
+            x_vector_only_mode=prompt_data["x_vector_only_mode"],
+            icl_mode=prompt_data["icl_mode"],
+            ref_text=prompt_data.get("ref_text"),
+        )
+        print(f"[缓存] 已加载 voice prompt: {voice_id}")
+        return prompt_item
+    except Exception as e:
+        print(f"[缓存] 加载失败 {voice_id}: {e}")
+        return None
+
+
+def get_or_create_voice_prompt(voice_id: str, audio_path: str, ref_text: str = ""):
+    """获取或创建 voice prompt（带缓存）"""
+    # 1. 先检查内存缓存
+    if voice_id in saved_voice_prompts:
+        print(f"[缓存] 命中内存: {voice_id}")
+        return saved_voice_prompts[voice_id]
+
+    # 2. 检查磁盘缓存
+    prompt_item = load_voice_prompt(voice_id)
+    if prompt_item:
+        saved_voice_prompts[voice_id] = prompt_item
+        return prompt_item
+
+    # 3. 创建新的 prompt
+    if model_clone is None:
+        raise RuntimeError("Clone model not loaded")
+
+    print(f"[缓存] 创建新 prompt: {voice_id}")
+    use_x_vector_only = not ref_text
+    prompts = model_clone.create_voice_clone_prompt(
+        ref_audio=audio_path,
+        ref_text=ref_text if ref_text else None,
+        x_vector_only_mode=use_x_vector_only,
+    )
+    prompt_item = prompts[0]
+
+    # 保存到磁盘和内存
+    save_voice_prompt(voice_id, prompt_item)
+    saved_voice_prompts[voice_id] = prompt_item
+
+    return prompt_item
 
 # 支持的说话人
 SPEAKERS = ["aiden", "dylan", "eric", "ono_anna", "ryan", "serena", "sohee", "uncle_fu", "vivian"]
@@ -510,13 +586,75 @@ async def get_saved_voices():
             if meta_file.exists():
                 with open(meta_file, "r", encoding="utf-8") as f:
                     meta = json.load(f)
+                    voice_id = voice_dir.name
+                    # 检查是否已缓存
+                    cached = (voice_id in saved_voice_prompts) or (voice_dir / "prompt.pt").exists()
                     voices.append({
-                        "id": voice_dir.name,
-                        "name": meta.get("name", voice_dir.name),
+                        "id": voice_id,
+                        "name": meta.get("name", voice_id),
                         "language": meta.get("language", "Chinese"),
                         "created_at": meta.get("created_at", ""),
+                        "cached": cached,
                     })
     return {"voices": voices}
+
+
+@app.post("/voices/{voice_id}/cache")
+async def cache_voice_prompt(voice_id: str):
+    """为指定声音预缓存 prompt"""
+    if model_status["clone"] != "loaded":
+        raise HTTPException(status_code=503, detail="克隆模型未加载")
+
+    voice_dir = VOICES_DIR / voice_id
+    if not voice_dir.exists():
+        raise HTTPException(status_code=404, detail="声音不存在")
+
+    meta_file = voice_dir / "meta.json"
+    with open(meta_file, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+
+    audio_path = voice_dir / meta["audio_file"]
+    ref_text = meta.get("ref_text", "")
+
+    try:
+        get_or_create_voice_prompt(voice_id, str(audio_path), ref_text)
+        return {"success": True, "message": "缓存成功"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/voices/cache-all")
+async def cache_all_voice_prompts():
+    """为所有未缓存的声音预缓存 prompt"""
+    if model_status["clone"] != "loaded":
+        raise HTTPException(status_code=503, detail="克隆模型未加载")
+
+    cached = []
+    failed = []
+
+    for voice_dir in VOICES_DIR.iterdir():
+        if voice_dir.is_dir():
+            voice_id = voice_dir.name
+            # 跳过已缓存的
+            if (voice_dir / "prompt.pt").exists():
+                continue
+
+            meta_file = voice_dir / "meta.json"
+            if not meta_file.exists():
+                continue
+
+            try:
+                with open(meta_file, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+
+                audio_path = voice_dir / meta["audio_file"]
+                ref_text = meta.get("ref_text", "")
+                get_or_create_voice_prompt(voice_id, str(audio_path), ref_text)
+                cached.append(voice_id)
+            except Exception as e:
+                failed.append({"id": voice_id, "error": str(e)})
+
+    return {"cached": cached, "failed": failed, "message": f"已缓存 {len(cached)} 个声音"}
 
 
 @app.post("/voices/save")
@@ -561,11 +699,21 @@ async def save_voice(
         with open(voice_dir / "meta.json", "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)
 
+        # 如果克隆模型已加载，预生成 voice prompt
+        prompt_cached = False
+        if model_status["clone"] == "loaded":
+            try:
+                get_or_create_voice_prompt(voice_id, str(audio_path), ref_text)
+                prompt_cached = True
+            except Exception as e:
+                print(f"[警告] 预生成 prompt 失败: {e}")
+
         return {
             "success": True,
             "voice_id": voice_id,
             "name": name.strip(),
-            "message": "声音保存成功"
+            "prompt_cached": prompt_cached,
+            "message": "声音保存成功" + ("（已缓存）" if prompt_cached else "")
         }
 
     except Exception as e:
@@ -624,17 +772,17 @@ async def tts_with_saved_voice(
         # 使用保存时的语言，除非指定了新语言
         use_language = language if language else meta.get("language", "Chinese")
         ref_text = meta.get("ref_text", "")
-        use_x_vector_only = not ref_text
 
         print(f"[声音库] 开始生成: {len(text)} 字 | 声音: {meta.get('name', voice_id)} | 语言: {use_language}")
         start_time = time.time()
 
+        # 获取或创建缓存的 voice prompt
+        voice_prompt = get_or_create_voice_prompt(voice_id, str(audio_path), ref_text)
+
         wavs, sr = model_clone.generate_voice_clone(
             text=text,
             language=use_language,
-            ref_audio=str(audio_path),
-            ref_text=ref_text if ref_text else None,
-            x_vector_only_mode=use_x_vector_only,
+            voice_clone_prompt=[voice_prompt],
         )
 
         stats = get_generation_stats(text, start_time, "声音库")
