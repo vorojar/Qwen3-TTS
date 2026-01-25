@@ -721,11 +721,12 @@ async def voice_clone_progress(
 
             # 生成 voice prompt
             use_x_vector_only = not ref_text
-            voice_prompt = model_clone.get_voice_prompt(
+            prompts = model_clone.create_voice_clone_prompt(
                 ref_audio=temp_path,
                 ref_text=ref_text if ref_text else None,
                 x_vector_only_mode=use_x_vector_only,
             )
+            voice_prompt = prompts[0]
 
             all_audio = []
             subtitles = []
