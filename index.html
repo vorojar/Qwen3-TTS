@@ -709,13 +709,15 @@
             // 显示/隐藏声音库
             document.getElementById('voice-library-section').classList.toggle('hidden', mode !== 'clone');
 
-            // 清除选中的声音
-            if (mode !== 'clone') {
+            // 切换到 clone 模式时刷新声音库列表（更新选中状态）
+            if (mode === 'clone') {
+                renderVoiceList();
+            } else {
+                // 离开 clone 模式时清除选中
                 selectedVoiceId = null;
             }
 
-            // 隐藏播放器
-            document.getElementById('player-section').classList.add('hidden');
+            // 隐藏保存区域（播放器保持不变）
             document.getElementById('save-voice-section').classList.add('hidden');
         }
 
@@ -725,6 +727,7 @@
         }
 
         // ===== 字数统计 =====
+        let langDetectTimer = null;
         function updateCharCount() {
             const text = document.getElementById('text-input').value;
             document.getElementById('char-count').innerHTML = `${text.length} <span data-i18n="stats.chars">${t('stats.chars')}</span>`;
@@ -733,6 +736,34 @@
             const btn = document.getElementById('generate-btn');
             if (!isGenerating) {
                 btn.disabled = text.trim().length === 0;
+            }
+
+            // 自动检测语言（防抖500ms）
+            clearTimeout(langDetectTimer);
+            langDetectTimer = setTimeout(() => detectAndSetLanguage(text), 500);
+        }
+
+        function detectAndSetLanguage(text) {
+            if (!text.trim()) return;
+            const counts = { zh: 0, ja: 0, ko: 0, en: 0 };
+            for (const c of text) {
+                const code = c.charCodeAt(0);
+                if (code >= 0x4e00 && code <= 0x9fff) counts.zh++;
+                else if ((code >= 0x3040 && code <= 0x30ff) || (code >= 0x31f0 && code <= 0x31ff)) counts.ja++;
+                else if (code >= 0xac00 && code <= 0xd7af) counts.ko++;
+                else if ((code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a)) counts.en++;
+            }
+            const total = counts.zh + counts.ja + counts.ko + counts.en;
+            if (total < 5) return;
+            let lang = null;
+            if (counts.ja > 0 && counts.ja >= counts.zh * 0.1) lang = 'Japanese';
+            else if (counts.ko > total * 0.3) lang = 'Korean';
+            else if (counts.zh > total * 0.3) lang = 'Chinese';
+            else if (counts.en > total * 0.5) lang = 'English';
+            if (lang) {
+                ['language-preset', 'language-clone', 'language-design'].forEach(id => {
+                    document.getElementById(id).value = lang;
+                });
             }
         }
 
