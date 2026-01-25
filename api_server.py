@@ -6,6 +6,7 @@ import tempfile
 from fastapi import FastAPI, Query, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from qwen_tts import Qwen3TTSModel
 import soundfile as sf
 import numpy as np
@@ -13,6 +14,15 @@ from pathlib import Path
 import shutil
 
 app = FastAPI(title="Qwen3-TTS API", version="1.0.0")
+
+# 添加 CORS 支持，允许 Tauri 应用访问
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 允许所有来源（生产环境可以限制）
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 BASE_DIR = Path(__file__).parent
 VOICES_DIR = BASE_DIR / "saved_voices"
