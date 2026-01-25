@@ -88,6 +88,47 @@ Open http://localhost:8000 in your browser to access the web UI.
 
 ---
 
+## Performance Optimization
+
+### Flash Attention (Recommended)
+
+Installing Flash Attention can improve inference speed by approximately **50%**.
+
+**Linux:**
+```bash
+pip install flash-attn --no-build-isolation
+```
+
+**Windows:**
+
+Windows does not support source compilation. Use pre-built wheels from [kingbri1/flash-attention](https://github.com/kingbri1/flash-attention/releases).
+
+Example (Python 3.10 + PyTorch 2.9 + CUDA 12.8):
+```bash
+# Upgrade PyTorch first
+pip install torch==2.9.0 torchaudio --index-url https://download.pytorch.org/whl/cu128
+
+# Install pre-built flash-attn
+pip install https://github.com/kingbri1/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu128torch2.9.0cxx11abiFALSE-cp310-cp310-win_amd64.whl
+```
+
+Verify installation: Server should no longer show `Warning: flash-attn is not installed` on startup.
+
+### Further Optimization
+
+To achieve higher performance (e.g., the official benchmark of 97ms/char):
+
+| Solution | Expected Improvement | Notes |
+|----------|---------------------|-------|
+| Better GPU | 2-5x | A100/H100 vs consumer GPUs |
+| vLLM Deployment | 2-3x | PagedAttention + continuous batching |
+| TensorRT-LLM | 2-5x | NVIDIA official inference optimization |
+| FP8 Quantization | 1.5-2x | Requires H100 |
+
+> Consumer GPUs (RTX 40 series) + Flash Attention achieving ~1.4s/char is a reasonable expectation.
+
+---
+
 ## API Reference
 
 ### TTS with Preset Speaker

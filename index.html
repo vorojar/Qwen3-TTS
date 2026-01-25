@@ -592,6 +592,8 @@
                 'status.generating': '生成中...',
                 'status.loadingModelBtn': '加载模型中...',
                 'status.success': '生成成功',
+                'stats.chars': '字',
+                'stats.perChar': '字',
                 'status.failed': '生成失败',
                 'status.enterText': '请输入要合成的文本',
                 'status.enterDesc': '请输入声音描述',
@@ -697,6 +699,8 @@
                 'status.generating': 'Generating...',
                 'status.loadingModelBtn': 'Loading model...',
                 'status.success': 'Success',
+                'stats.chars': 'chars',
+                'stats.perChar': 'char',
                 'status.failed': 'Failed',
                 'status.enterText': 'Please enter text to synthesize',
                 'status.enterDesc': 'Please enter voice description',
@@ -1015,7 +1019,7 @@
                 audio.src = URL.createObjectURL(await response.blob());
                 container.classList.remove('hidden');
                 audio.play();
-                status.textContent = t('status.success');
+                status.innerHTML = formatStats(response);
                 status.classList.remove('text-red-500');
             } catch (error) {
                 status.textContent = t('status.failed') + ': ' + error.message;
@@ -1139,7 +1143,7 @@
                 audio.src = URL.createObjectURL(await response.blob());
                 container.classList.remove('hidden');
                 audio.play();
-                status.textContent = t('status.success');
+                status.innerHTML = formatStats(response);
                 status.classList.remove('text-red-500');
             } catch (error) {
                 status.textContent = t('status.failed') + ': ' + error.message;
@@ -1148,6 +1152,16 @@
                 btn.disabled = false;
                 btn.textContent = t('btn.generate');
             }
+        }
+
+        function formatStats(response) {
+            const charCount = response.headers.get('X-Char-Count');
+            const elapsed = response.headers.get('X-Elapsed');
+            const avgPerChar = response.headers.get('X-Avg-Per-Char');
+            if (charCount && elapsed) {
+                return `<span class="text-green-600">${t('status.success')}</span> · ${charCount} ${t('stats.chars')} · ${elapsed}s · ${avgPerChar}s/${t('stats.perChar')}`;
+            }
+            return t('status.success');
         }
 
 
@@ -1205,7 +1219,7 @@
                 audio.src = URL.createObjectURL(await response.blob());
                 container.classList.remove('hidden');
                 audio.play();
-                status.textContent = t('status.success');
+                status.innerHTML = formatStats(response);
                 status.classList.remove('text-red-500');
             } catch (error) {
                 status.textContent = t('status.failed') + ': ' + error.message;

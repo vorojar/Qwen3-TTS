@@ -88,6 +88,47 @@ python api_server.py
 
 ---
 
+## 性能优化
+
+### Flash Attention（推荐）
+
+安装 Flash Attention 可提升推理速度约 **50%**。
+
+**Linux:**
+```bash
+pip install flash-attn --no-build-isolation
+```
+
+**Windows:**
+
+Windows 不支持源码编译，需使用预编译包。从 [kingbri1/flash-attention](https://github.com/kingbri1/flash-attention/releases) 下载对应版本的 wheel 文件。
+
+示例（Python 3.10 + PyTorch 2.9 + CUDA 12.8）：
+```bash
+# 先升级 PyTorch
+pip install torch==2.9.0 torchaudio --index-url https://download.pytorch.org/whl/cu128
+
+# 安装预编译的 flash-attn
+pip install https://github.com/kingbri1/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu128torch2.9.0cxx11abiFALSE-cp310-cp310-win_amd64.whl
+```
+
+验证安装：启动服务后不再显示 `Warning: flash-attn is not installed`
+
+### 进一步优化
+
+如需达到更高性能（如官方宣称的 97ms/字），需要：
+
+| 方案 | 预期提升 | 说明 |
+|------|----------|------|
+| 更强 GPU | 2-5x | A100/H100 vs 消费级显卡 |
+| vLLM 部署 | 2-3x | PagedAttention + 连续批处理 |
+| TensorRT-LLM | 2-5x | NVIDIA 官方推理优化 |
+| FP8 量化 | 1.5-2x | 需 H100 支持 |
+
+> 消费级显卡（RTX 40系）+ Flash Attention 达到 ~1.4s/字 是合理水平。
+
+---
+
 ## API 文档
 
 ### 预设说话人合成

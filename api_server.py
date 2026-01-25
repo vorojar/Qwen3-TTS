@@ -3,6 +3,7 @@ import os
 import json
 import torch
 import tempfile
+import time
 from fastapi import FastAPI, Query, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,6 +13,19 @@ import soundfile as sf
 import numpy as np
 from pathlib import Path
 import shutil
+
+
+def get_generation_stats(text: str, start_time: float, mode: str = "TTS") -> dict:
+    """计算生成统计信息"""
+    elapsed = time.time() - start_time
+    char_count = len(text)
+    avg_per_char = elapsed / char_count if char_count > 0 else 0
+    print(f"[{mode}] 生成完成: {char_count} 字 | 用时 {elapsed:.2f}s | 平均 {avg_per_char:.3f}s/字")
+    return {
+        "char_count": char_count,
+        "elapsed": round(elapsed, 2),
+        "avg_per_char": round(avg_per_char, 3),
+    }
 
 app = FastAPI(title="Qwen3-TTS API", version="1.0.0")
 
@@ -202,12 +216,17 @@ async def tts(
         raise HTTPException(status_code=400, detail=f"不支持的语言: {language}。支持: {LANGUAGES}")
 
     try:
+        print(f"[TTS] 开始生成: {len(text)} 字 | 说话人: {speaker} | 语言: {language}")
+        start_time = time.time()
+
         wavs, sr = model_custom.generate_custom_voice(
             text=text,
             language=language,
             speaker=speaker,
             instruct=instruct,
         )
+
+        stats = get_generation_stats(text, start_time, "TTS")
 
         audio_buffer = io.BytesIO()
         sf.write(audio_buffer, wavs[0], sr, format='WAV')
@@ -216,7 +235,13 @@ async def tts(
         return StreamingResponse(
             audio_buffer,
             media_type="audio/wav",
-            headers={"Content-Disposition": "attachment; filename=tts_output.wav"}
+            headers={
+                "Content-Disposition": "attachment; filename=tts_output.wav",
+                "X-Char-Count": str(stats["char_count"]),
+                "X-Elapsed": str(stats["elapsed"]),
+                "X-Avg-Per-Char": str(stats["avg_per_char"]),
+                "Access-Control-Expose-Headers": "X-Char-Count, X-Elapsed, X-Avg-Per-Char",
+            }
         )
 
     except Exception as e:
@@ -372,6 +397,9 @@ async def voice_clone(
 
         # 生成语音
         # 如果没有提供参考文本，使用 x_vector_only_mode
+        print(f"[克隆] 开始生成: {len(text)} 字 | 语言: {language}")
+        start_time = time.time()
+
         use_x_vector_only = not ref_text
         wavs, sr = model_clone.generate_voice_clone(
             text=text,
@@ -381,6 +409,8 @@ async def voice_clone(
             x_vector_only_mode=use_x_vector_only,
         )
 
+        stats = get_generation_stats(text, start_time, "克隆")
+
         audio_buffer = io.BytesIO()
         sf.write(audio_buffer, wavs[0], sr, format='WAV')
         audio_buffer.seek(0)
@@ -388,7 +418,13 @@ async def voice_clone(
         return StreamingResponse(
             audio_buffer,
             media_type="audio/wav",
-            headers={"Content-Disposition": "attachment; filename=clone_output.wav"}
+            headers={
+                "Content-Disposition": "attachment; filename=clone_output.wav",
+                "X-Char-Count": str(stats["char_count"]),
+                "X-Elapsed": str(stats["elapsed"]),
+                "X-Avg-Per-Char": str(stats["avg_per_char"]),
+                "Access-Control-Expose-Headers": "X-Char-Count, X-Elapsed, X-Avg-Per-Char",
+            }
         )
 
     except Exception as e:
@@ -433,11 +469,16 @@ async def voice_design(
         raise HTTPException(status_code=400, detail=f"不支持的语言: {language}。支持: {LANGUAGES}")
 
     try:
+        print(f"[设计] 开始生成: {len(text)} 字 | 语言: {language}")
+        start_time = time.time()
+
         wavs, sr = model_design.generate_voice_design(
             text=text,
             language=language,
             instruct=instruct,
         )
+
+        stats = get_generation_stats(text, start_time, "设计")
 
         audio_buffer = io.BytesIO()
         sf.write(audio_buffer, wavs[0], sr, format='WAV')
@@ -446,7 +487,13 @@ async def voice_design(
         return StreamingResponse(
             audio_buffer,
             media_type="audio/wav",
-            headers={"Content-Disposition": "attachment; filename=design_output.wav"}
+            headers={
+                "Content-Disposition": "attachment; filename=design_output.wav",
+                "X-Char-Count": str(stats["char_count"]),
+                "X-Elapsed": str(stats["elapsed"]),
+                "X-Avg-Per-Char": str(stats["avg_per_char"]),
+                "Access-Control-Expose-Headers": "X-Char-Count, X-Elapsed, X-Avg-Per-Char",
+            }
         )
 
     except Exception as e:
@@ -579,6 +626,9 @@ async def tts_with_saved_voice(
         ref_text = meta.get("ref_text", "")
         use_x_vector_only = not ref_text
 
+        print(f"[声音库] 开始生成: {len(text)} 字 | 声音: {meta.get('name', voice_id)} | 语言: {use_language}")
+        start_time = time.time()
+
         wavs, sr = model_clone.generate_voice_clone(
             text=text,
             language=use_language,
@@ -587,6 +637,8 @@ async def tts_with_saved_voice(
             x_vector_only_mode=use_x_vector_only,
         )
 
+        stats = get_generation_stats(text, start_time, "声音库")
+
         audio_buffer = io.BytesIO()
         sf.write(audio_buffer, wavs[0], sr, format='WAV')
         audio_buffer.seek(0)
@@ -594,7 +646,13 @@ async def tts_with_saved_voice(
         return StreamingResponse(
             audio_buffer,
             media_type="audio/wav",
-            headers={"Content-Disposition": f"attachment; filename={voice_id}_output.wav"}
+            headers={
+                "Content-Disposition": f"attachment; filename={voice_id}_output.wav",
+                "X-Char-Count": str(stats["char_count"]),
+                "X-Elapsed": str(stats["elapsed"]),
+                "X-Avg-Per-Char": str(stats["avg_per_char"]),
+                "Access-Control-Expose-Headers": "X-Char-Count, X-Elapsed, X-Avg-Per-Char",
+            }
         )
 
     except HTTPException:
