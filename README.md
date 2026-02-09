@@ -19,6 +19,16 @@ A web application for Text-to-Speech powered by Alibaba's Qwen3-TTS model, featu
 - **Web UI**: Browser-based interface with recording support
 - **REST API**: Easy integration into your applications
 
+## Enhanced Features
+
+1. **Sentence-by-Sentence Progress** - Long text is split into sentences and generated sequentially with real-time progress display, showing which sentence is currently being processed
+2. **Stop Generation** - Cancel ongoing generation at any time; the system stops at the next sentence boundary
+3. **Subtitle Generation** - Automatically generates SRT/VTT subtitle files synchronized with audio timing, perfect for video production
+4. **Auto Language Detection** - Automatically detects input language (Chinese/English/Japanese/Korean) and sets the language selector accordingly
+5. **Voice Prompt Caching** - Voice library entries cache their voice prompts to disk, eliminating repeated prompt extraction and significantly speeding up subsequent generations
+6. **MP3 Export** - Convert and download audio as MP3 directly in the browser (in addition to WAV)
+7. **Voice Design** - Create custom voices by describing characteristics in natural language (e.g., "deep male voice with a warm tone")
+
 ## Supported Languages
 
 Chinese, English, Japanese, Korean, German, French, Russian, Portuguese, Spanish, Italian
