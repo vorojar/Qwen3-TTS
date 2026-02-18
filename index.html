@@ -6,6 +6,8 @@
     <title>Qwen3-TTS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+    <script src="https://unpkg.com/wavesurfer.js@7"></script>
+    <script src="https://unpkg.com/wavesurfer.js@7/dist/plugins/regions.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -114,6 +116,15 @@
             color: #A0AEC0;
         }
 
+        /* 播放高亮 */
+        .sentence-editor-item.playing {
+            background: #FEF3E2;
+            border-color: #E07A5F;
+        }
+        .sentence-editor-item.played:not(.selected) {
+            opacity: 0.5;
+        }
+
         select.input-field {
             cursor: pointer;
             appearance: none;
@@ -149,20 +160,11 @@
         .play-btn:hover { background: #C96A52; transform: scale(1.05); }
         .play-btn svg { fill: white; }
 
-        .progress-bar {
-            flex: 1;
-            height: 6px;
-            background: #E8E4DD;
-            border-radius: 3px;
-            cursor: pointer;
-            position: relative;
-        }
-        .progress-bar .progress {
-            height: 100%;
-            background: #E07A5F;
-            border-radius: 3px;
-            width: 0%;
-            transition: width 0.1s;
+        .waveform-container {
+            height: 48px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #FAF8F5;
         }
 
         @keyframes spin {
@@ -183,6 +185,129 @@
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 句子编辑视图 */
+        .sentence-editor-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .sentence-editor-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.15s;
+            border: 1px solid transparent;
+        }
+        .sentence-editor-item:hover {
+            background: #F5F0E8;
+        }
+        .sentence-editor-item.selected {
+            background: #FEF3E2;
+            border-color: #E07A5F;
+        }
+        .sentence-editor-item.regenerating {
+            pointer-events: none;
+        }
+        .sentence-editor-item.regenerating .sentence-editor-text {
+            opacity: 0.5;
+        }
+        .sentence-editor-index {
+            color: #A0AEC0;
+            font-size: 12px;
+            min-width: 20px;
+            text-align: right;
+            padding-top: 2px;
+            flex-shrink: 0;
+        }
+        .sentence-editor-text {
+            flex: 1;
+            line-height: 1.6;
+            min-height: 1.6em;
+            outline: none;
+        }
+        .sentence-editor-text[contenteditable="true"] {
+            background: white;
+            border: 1px solid #E07A5F;
+            border-radius: 4px;
+            padding: 2px 6px;
+        }
+        .sentence-editor-actions {
+            display: flex;
+            gap: 4px;
+            flex-shrink: 0;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .sentence-editor-item.selected .sentence-editor-actions,
+        .sentence-editor-item:hover .sentence-editor-actions {
+            opacity: 1;
+        }
+        .sentence-regen-btn {
+            padding: 2px 8px;
+            font-size: 12px;
+            border-radius: 4px;
+            border: 1px solid #E07A5F;
+            color: #E07A5F;
+            background: white;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .sentence-regen-btn:hover {
+            background: #E07A5F;
+            color: white;
+        }
+        .sentence-play-btn, .sentence-del-btn {
+            padding: 2px 6px;
+            font-size: 12px;
+            border-radius: 4px;
+            border: 1px solid #E2DED6;
+            background: white;
+            cursor: pointer;
+            transition: all 0.15s;
+            line-height: 1;
+        }
+        .sentence-play-btn:hover { border-color: #E07A5F; color: #E07A5F; }
+        .sentence-play-btn.playing-now { border-color: #E07A5F; color: #E07A5F; background: #FEF3E2; }
+        .sentence-del-btn:hover { border-color: #e53e3e; color: #e53e3e; }
+        .sentence-insert-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding: 2px 0;
+            border: none;
+            background: none;
+            color: #CBD5E0;
+            cursor: pointer;
+            font-size: 14px;
+            transition: color 0.15s;
+        }
+        .sentence-insert-btn:hover { color: #E07A5F; }
+        .sentence-inserting-placeholder {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            background: #FEF3E2;
+            border: 1px dashed #E07A5F;
+            border-radius: 6px;
+            color: #E07A5F;
+            font-size: 13px;
+            animation: insertPulse 1.5s ease-in-out infinite;
+        }
+        @keyframes insertPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .sentence-editor-list.inserting > li:not(.inserting-row) {
+            pointer-events: none;
+            opacity: 0.5;
         }
 
         /* 录音动画 */
@@ -271,6 +396,12 @@
                     ></textarea>
                     <!-- 生成进度视图 (生成时显示) -->
                     <div id="progress-view" class="hidden input-field flex-1 overflow-y-auto text-base" style="line-height:1.8"></div>
+                    <!-- 返回句子视图按钮 -->
+                    <div id="sentence-view-hint" class="hidden mt-2">
+                        <button onclick="showSentenceEditorView()" class="text-sm text-accent hover:text-accent-dark transition-colors" style="background:none;border:none;cursor:pointer">
+                            ← <span data-i18n="btn.sentenceView">返回句子视图</span>
+                        </button>
+                    </div>
 
                     <!-- 操作栏 -->
                     <div class="flex items-center justify-between mt-4">
@@ -293,10 +424,8 @@
                             </svg>
                         </button>
                         <div class="flex-1">
-                            <div class="progress-bar" onclick="seek(event)">
-                                <div id="progress" class="progress"></div>
-                            </div>
-                            <div class="flex justify-between mt-2 text-xs text-charcoal/50">
+                            <div id="waveform" class="waveform-container"></div>
+                            <div class="flex justify-between mt-1 text-xs text-charcoal/50">
                                 <span id="current-time">0:00</span>
                                 <span id="duration">0:00</span>
                             </div>
@@ -573,8 +702,176 @@
         let recordingStartTime = null;
         let timerInterval = null;
 
+        // 单句重新生成相关
+        let sentenceAudios = [];   // 每句音频 base64 数组
+        let sentenceTexts = [];    // 每句文本数组
+        let lastGenerateParams = null; // {mode, speaker, language, instruct, voice_id, clone_prompt_id}
+        let clonePromptId = null;  // clone 模式的 session ID
+
+        // 撤销栈
+        let undoStack = []; // [{index, audio, text}]
+
+        // 单句试听
+        let sentencePreviewIndex = -1;
+
+        // 统计数据（数值，语言无关）
+        let lastStatsData = null; // {char_count, sentence_count, elapsed, avg_per_char}
+
+        function renderStats() {
+            if (!lastStatsData) return;
+            const s = lastStatsData;
+            if (s.sentence_count != null) {
+                document.getElementById('stats-chars').textContent = `${s.char_count} ${t('stats.chars')} · ${s.sentence_count} ${t('stats.sentences')} · ${s.elapsed}s`;
+            } else {
+                document.getElementById('stats-chars').textContent = `${s.char_count} ${t('stats.chars')} · ${s.elapsed}s`;
+            }
+            document.getElementById('stats-speed').textContent = `${s.avg_per_char}s/${t('stats.chars')}`;
+        }
+
+        // 句间停顿
+        let pausePaceMultiplier = 1.0;
+        let decodedPcmCache = []; // 缓存解码后的 PCM，避免重复 atob
+
+        // ===== 会话持久化 (IndexedDB) =====
+        const SESSION_DB = 'vibevoice_session';
+        const SESSION_STORE = 'session';
+        const SESSION_KEY = 'current';
+
+        function openSessionDB() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(SESSION_DB, 1);
+                req.onupgradeneeded = () => req.result.createObjectStore(SESSION_STORE);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function saveSession() {
+            if (!sentenceAudios.length) return;
+            try {
+                const db = await openSessionDB();
+                const tx = db.transaction(SESSION_STORE, 'readwrite');
+                tx.objectStore(SESSION_STORE).put({
+                    sentenceAudios,
+                    sentenceTexts,
+                    lastGenerateParams,
+                    clonePromptId,
+                    currentSubtitles,
+                    pausePaceMultiplier,
+                    inputText: document.getElementById('text-input').value,
+                    statsData: lastStatsData,
+                    timestamp: Date.now(),
+                }, SESSION_KEY);
+                db.close();
+            } catch (e) { console.warn('saveSession failed:', e); }
+        }
+
+        async function loadSession() {
+            try {
+                const db = await openSessionDB();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(SESSION_STORE, 'readonly');
+                    const req = tx.objectStore(SESSION_STORE).get(SESSION_KEY);
+                    req.onsuccess = () => { db.close(); resolve(req.result || null); };
+                    req.onerror = () => { db.close(); resolve(null); };
+                });
+            } catch (e) { return null; }
+        }
+
+        async function clearSession() {
+            try {
+                const db = await openSessionDB();
+                const tx = db.transaction(SESSION_STORE, 'readwrite');
+                tx.objectStore(SESSION_STORE).delete(SESSION_KEY);
+                db.close();
+            } catch (e) {}
+        }
+
+        async function restoreSession() {
+            const session = await loadSession();
+            if (!session || !session.sentenceAudios || !session.sentenceAudios.length) return;
+            // 恢复状态
+            sentenceAudios = session.sentenceAudios;
+            sentenceTexts = session.sentenceTexts;
+            lastGenerateParams = session.lastGenerateParams;
+            clonePromptId = session.clonePromptId;
+            currentSubtitles = session.currentSubtitles;
+            pausePaceMultiplier = session.pausePaceMultiplier ?? 1.0;
+            decodedPcmCache = [];
+            // 恢复输入框
+            if (session.inputText) {
+                document.getElementById('text-input').value = session.inputText;
+                updateCharCount();
+            }
+            // 重建音频
+            const merged = mergeAllSentenceAudios();
+            currentSubtitles = merged.subtitles;
+            audioElement.src = URL.createObjectURL(merged.blob);
+            loadWaveform();
+            // 恢复 stats 显示
+            if (session.statsData) { lastStatsData = session.statsData; renderStats(); }
+            // 显示播放器和句子视图
+            document.getElementById('player-section').classList.remove('hidden');
+            if (sentenceTexts.length > 1) {
+                selectedSentenceIndex = -1;
+                showSentenceEditorView();
+            }
+        }
+
         // 音频播放
         const audioElement = document.getElementById('audio-element');
+
+        // wavesurfer 波形可视化
+        let wavesurfer = null;
+        let wsRegions = null;
+
+        function initWavesurfer() {
+            if (wavesurfer) return;
+            wavesurfer = WaveSurfer.create({
+                container: '#waveform',
+                height: 48,
+                waveColor: '#E8E4DD',
+                progressColor: '#E07A5F',
+                cursorColor: '#2D3748',
+                cursorWidth: 2,
+                barWidth: 2,
+                barGap: 1,
+                barRadius: 2,
+                barMinHeight: 1,
+                normalize: true,
+                interact: true,
+                media: audioElement,
+            });
+            wsRegions = wavesurfer.registerPlugin(WaveSurfer.Regions.create());
+            wavesurfer.on('ready', () => {
+                updateWaveformRegions();
+            });
+            wavesurfer.on('timeupdate', (currentTime) => {
+                document.getElementById('current-time').textContent = formatTime(currentTime);
+                updatePlaybackHighlight(currentTime);
+            });
+        }
+
+        function loadWaveform() {
+            if (!audioElement.src) return;
+            if (!wavesurfer) initWavesurfer();
+            wavesurfer.load(audioElement.src);
+        }
+
+        function updateWaveformRegions() {
+            if (!wsRegions) return;
+            wsRegions.clearRegions();
+            if (!currentSubtitles || !currentSubtitles.length) return;
+            currentSubtitles.forEach((sub, i) => {
+                wsRegions.addRegion({
+                    start: sub.start,
+                    end: sub.end,
+                    color: i % 2 === 0 ? 'rgba(224,122,95,0.15)' : 'rgba(224,122,95,0.05)',
+                    drag: false,
+                    resize: false,
+                });
+            });
+        }
 
         // ===== 国际化 =====
         const i18n = {
@@ -624,6 +921,20 @@
                 'api.designTTS': '声音设计',
                 'api.voiceLibrary': '声音库管理',
                 'confirm.delete': '确定删除此声音？',
+                'btn.regenerate': '重新生成',
+                'status.regenerating': '重新生成中...',
+                'status.inserting': '正在生成新句子...',
+                'btn.editSentence': '编辑',
+                'btn.backToText': '返回编辑',
+                'btn.sentenceView': '返回句子视图',
+                'btn.undo': '撤销',
+                'btn.addSentence': '添加句子',
+                'btn.insertHint': '输入新句子文本',
+                'confirm.deleteSentence': '确定删除这句？',
+                'label.pace': '句间停顿',
+                'label.paceOff': '无',
+                'label.paceSlow': '慢',
+                'label.paceFast': '快',
             },
             en: {
                 'nav.preset': 'Preset Voices',
@@ -671,6 +982,20 @@
                 'api.designTTS': 'Voice Design',
                 'api.voiceLibrary': 'Voice Library',
                 'confirm.delete': 'Delete this voice?',
+                'btn.regenerate': 'Regenerate',
+                'status.regenerating': 'Regenerating...',
+                'status.inserting': 'Generating new sentence...',
+                'btn.editSentence': 'Edit',
+                'btn.backToText': 'Back to edit',
+                'btn.sentenceView': 'Back to sentences',
+                'btn.undo': 'Undo',
+                'btn.addSentence': 'Add sentence',
+                'btn.insertHint': 'Enter new sentence text',
+                'confirm.deleteSentence': 'Delete this sentence?',
+                'label.pace': 'Pause',
+                'label.paceOff': 'Off',
+                'label.paceSlow': 'Slow',
+                'label.paceFast': 'Fast',
             }
         };
 
@@ -686,6 +1011,7 @@
                 el.placeholder = t(el.dataset.i18nPlaceholder);
             });
             document.getElementById('lang-toggle').textContent = currentLang === 'zh' ? 'EN' : '中';
+            renderStats();
         }
 
         function toggleLanguage() {
@@ -991,6 +1317,16 @@
             }
             isGenerating = false;
             currentSubtitles = null;
+            sentenceAudios = [];
+            sentenceTexts = [];
+            decodedPcmCache = [];
+            selectedSentenceIndex = -1;
+            undoStack = [];
+            sentencePreviewIndex = -1;
+            if (_sentencePreviewEndHandler) {
+                audioElement.removeEventListener('timeupdate', _sentencePreviewEndHandler);
+                _sentencePreviewEndHandler = null;
+            }
             // 隐藏进度视图
             const textInput = document.getElementById('text-input');
             const progressView = document.getElementById('progress-view');
@@ -1088,7 +1424,504 @@
             const progressView = document.getElementById('progress-view');
             textInput.classList.remove('hidden');
             progressView.classList.add('hidden');
+            // 如果有句子数据，显示"返回句子视图"按钮
+            const hint = document.getElementById('sentence-view-hint');
+            if (hint) {
+                hint.classList.toggle('hidden', sentenceAudios.length <= 1);
+            }
             updateCharCount();
+        }
+
+        // 显示句子编辑视图
+        let selectedSentenceIndex = -1;
+
+        function showSentenceEditorView() {
+            const textInput = document.getElementById('text-input');
+            const progressView = document.getElementById('progress-view');
+
+            // 找出最近一次撤销对应的句子索引
+            const lastUndoIndex = undoStack.length > 0 ? undoStack[undoStack.length - 1].index : -1;
+
+            let html = '<ul class="sentence-editor-list">';
+            sentenceTexts.forEach((text, index) => {
+                const isSelected = index === selectedSentenceIndex;
+                const isPreviewPlaying = sentencePreviewIndex === index;
+                const hasUndo = index === lastUndoIndex;
+                html += `<li class="sentence-editor-item ${isSelected ? 'selected' : ''}"
+                    id="sent-item-${index}"
+                    onclick="selectSentenceItem(${index}, event)"
+                    ondblclick="editSentenceItem(${index})">
+                    <span class="sentence-editor-index">${index + 1}</span>
+                    <span class="sentence-editor-text" id="sent-text-${index}">${escapeHtml(text)}</span>
+                    <span class="sentence-editor-actions">
+                        ${hasUndo ? '<button class="sentence-regen-btn" onclick="event.stopPropagation(); undoRegenerate()" title="' + t('btn.undo') + '" style="border-color:#f6ad55;color:#dd6b20">↩</button>' : ''}
+                        <button class="sentence-play-btn ${isPreviewPlaying ? 'playing-now' : ''}" onclick="event.stopPropagation(); previewSentenceAudio(${index})" title="试听">${isPreviewPlaying ? '⏸' : '▶'}</button>
+                        <button class="sentence-regen-btn" onclick="event.stopPropagation(); regenerateSentence(${index})">${t('btn.regenerate')}</button>
+                        <button class="sentence-del-btn" onclick="event.stopPropagation(); deleteSentence(${index})" title="删除">✕</button>
+                    </span>
+                </li>`;
+                // 插入按钮（每句之后）
+                html += `<li><button class="sentence-insert-btn" onclick="event.stopPropagation(); insertSentence(${index + 1})" title="${t('btn.addSentence')}">＋</button></li>`;
+            });
+            html += '</ul>';
+            // 底部工具栏：停顿控制 + 返回编辑
+            html += `<div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#718096">
+                    <span>${t('label.pace')}</span>
+                    <span style="min-width:28px;text-align:center;font-variant-numeric:tabular-nums">${pausePaceMultiplier === 0 ? t('label.paceOff') : pausePaceMultiplier.toFixed(1) + 'x'}</span>
+                    <input type="range" min="0" max="2" step="0.1" value="${pausePaceMultiplier}"
+                        style="width:100px;accent-color:#E07A5F"
+                        oninput="pausePaceMultiplier=parseFloat(this.value); this.previousElementSibling.textContent=this.value==='0'?t('label.paceOff'):parseFloat(this.value).toFixed(1)+'x'; rebuildAudioAndSubtitles()"
+                        onchange="saveSession()">
+                </div>
+                <button onclick="exitSentenceEditorView()" style="font-size:12px;color:#718096;background:none;border:none;cursor:pointer;text-decoration:underline">${t('btn.backToText')}</button>
+            </div>`;
+
+            progressView.innerHTML = html;
+            textInput.classList.add('hidden');
+            progressView.classList.remove('hidden');
+            // 隐藏"返回句子视图"提示
+            const hint = document.getElementById('sentence-view-hint');
+            if (hint) hint.classList.add('hidden');
+        }
+
+        function exitSentenceEditorView() {
+            finishEditing();
+            selectedSentenceIndex = -1;
+            // 同步句子文本回 textarea
+            if (sentenceTexts.length > 0) {
+                document.getElementById('text-input').value = sentenceTexts.join('');
+            }
+            hideProgressView();
+        }
+
+        function selectSentenceItem(index, event) {
+            // 如果点击发生在正在编辑的 contenteditable 内，不处理（让光标自由移动）
+            if (event && event.target.closest('[contenteditable="true"]')) return;
+
+            // 如果有正在编辑的句子，先保存
+            finishEditing();
+
+            selectedSentenceIndex = selectedSentenceIndex === index ? -1 : index;
+            // 更新选中状态
+            document.querySelectorAll('.sentence-editor-item').forEach((el, i) => {
+                el.classList.toggle('selected', i === selectedSentenceIndex);
+            });
+        }
+
+        function editSentenceItem(index) {
+            // 如果已经在编辑这句了，不重复处理
+            const textEl = document.getElementById(`sent-text-${index}`);
+            if (textEl && textEl.contentEditable === 'true') return;
+
+            finishEditing();
+            selectedSentenceIndex = index;
+            document.querySelectorAll('.sentence-editor-item').forEach((el, i) => {
+                el.classList.toggle('selected', i === index);
+            });
+            if (textEl) {
+                textEl.contentEditable = 'true';
+                textEl.focus();
+                // 光标放到末尾
+                const range = document.createRange();
+                range.selectNodeContents(textEl);
+                range.collapse(false);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                // Enter 键完成编辑
+                textEl.onkeydown = (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        finishEditing();
+                    }
+                };
+            }
+        }
+
+        function finishEditing() {
+            let changed = false;
+            document.querySelectorAll('.sentence-editor-text[contenteditable="true"]').forEach(el => {
+                el.contentEditable = 'false';
+                el.onkeydown = null;
+                // 获取索引并更新 sentenceTexts
+                const idMatch = el.id.match(/sent-text-(\d+)/);
+                if (idMatch) {
+                    const idx = parseInt(idMatch[1]);
+                    const newText = el.textContent.trim();
+                    if (newText && newText !== sentenceTexts[idx]) {
+                        sentenceTexts[idx] = newText;
+                        changed = true;
+                    }
+                }
+            });
+            if (changed) saveSession(); // 文本编辑后持久化
+        }
+
+        // ===== 单句试听 =====
+        let _sentencePreviewEndHandler = null;
+
+        function previewSentenceAudio(index) {
+            // 清除之前的句尾监听
+            if (_sentencePreviewEndHandler) {
+                audioElement.removeEventListener('timeupdate', _sentencePreviewEndHandler);
+                _sentencePreviewEndHandler = null;
+            }
+            // 如果正在播放同一句，停止
+            if (sentencePreviewIndex === index && !audioElement.paused) {
+                audioElement.pause();
+                sentencePreviewIndex = -1;
+                showSentenceEditorView();
+                return;
+            }
+
+            const sub = currentSubtitles && currentSubtitles[index];
+            if (!sub) return;
+
+            // 暂停当前播放
+            if (!audioElement.paused) audioElement.pause();
+
+            sentencePreviewIndex = index;
+            showSentenceEditorView();
+
+            // seek 到句子起点并播放
+            audioElement.currentTime = sub.start;
+            audioElement.play();
+
+            // 监听 timeupdate，到句尾自动停止
+            const endTime = sub.end;
+            _sentencePreviewEndHandler = () => {
+                if (audioElement.currentTime >= endTime) {
+                    audioElement.pause();
+                    audioElement.removeEventListener('timeupdate', _sentencePreviewEndHandler);
+                    _sentencePreviewEndHandler = null;
+                    sentencePreviewIndex = -1;
+                    showSentenceEditorView();
+                }
+            };
+            audioElement.addEventListener('timeupdate', _sentencePreviewEndHandler);
+        }
+
+        // ===== 撤销重新生成 =====
+        function undoRegenerate() {
+            if (undoStack.length === 0) return;
+            const last = undoStack.pop();
+            sentenceAudios[last.index] = last.audio;
+            sentenceTexts[last.index] = last.text;
+            // 重新合并
+            rebuildAudioAndSubtitles();
+            saveSession(); // 持久化
+            selectedSentenceIndex = last.index;
+            showSentenceEditorView();
+            const statusEl = document.getElementById('status-message');
+            statusEl.innerHTML = `<span class="text-yellow-600">${t('btn.undo')}</span>`;
+        }
+
+        // ===== 删除句子 =====
+        function deleteSentence(index) {
+            if (sentenceTexts.length <= 1) return; // 至少保留一句
+            if (!confirm(t('confirm.deleteSentence'))) return;
+            finishEditing();
+            sentenceAudios.splice(index, 1);
+            sentenceTexts.splice(index, 1);
+            decodedPcmCache = [];
+            rebuildAudioAndSubtitles();
+            saveSession(); // 持久化
+            if (selectedSentenceIndex >= sentenceTexts.length) selectedSentenceIndex = sentenceTexts.length - 1;
+            if (selectedSentenceIndex === index) selectedSentenceIndex = -1;
+            showSentenceEditorView();
+        }
+
+        // ===== 插入句子 =====
+        async function insertSentence(afterIndex) {
+            if (!lastGenerateParams) return;
+            const newText = prompt(t('btn.insertHint'));
+            if (!newText || !newText.trim()) return;
+            finishEditing();
+
+            const statusEl = document.getElementById('status-message');
+            const btn = document.getElementById('generate-btn');
+            const editorList = document.querySelector('.sentence-editor-list');
+
+            // 1. 在插入位置显示占位行
+            if (editorList) {
+                editorList.classList.add('inserting');
+                const placeholderHtml = `<li class="inserting-row"><div class="sentence-inserting-placeholder">
+                    <span class="spinner" style="width:14px;height:14px;border-width:2px"></span>
+                    <span>${escapeHtml(newText.trim().length > 30 ? newText.trim().slice(0, 30) + '...' : newText.trim())}</span>
+                </div></li>`;
+                // 找到 afterIndex 对应的插入按钮行（每个句子后面跟一个插入按钮 li，所以是 index*2+1）
+                const items = editorList.children;
+                const insertBtnIndex = afterIndex * 2 - 1;
+                if (insertBtnIndex >= 0 && insertBtnIndex < items.length) {
+                    items[insertBtnIndex].insertAdjacentHTML('afterend', placeholderHtml);
+                } else {
+                    editorList.insertAdjacentHTML('afterbegin', placeholderHtml);
+                }
+            }
+
+            // 2. 禁用生成按钮
+            const originalBtnHtml = btn.innerHTML;
+            const originalBtnOnclick = btn.onclick;
+            btn.disabled = true;
+            btn.innerHTML = `<span class="spinner" style="width:14px;height:14px;border-width:2px"></span><span>${t('status.inserting')}</span>`;
+
+            // 3. 状态提示
+            statusEl.textContent = t('status.inserting');
+
+            try {
+                const formData = new FormData();
+                formData.append('sentence_text', newText.trim());
+                formData.append('mode', lastGenerateParams.mode);
+                formData.append('language', lastGenerateParams.language);
+                if (lastGenerateParams.speaker) formData.append('speaker', lastGenerateParams.speaker);
+                if (lastGenerateParams.instruct) formData.append('instruct', lastGenerateParams.instruct);
+                if (lastGenerateParams.voice_id) formData.append('voice_id', lastGenerateParams.voice_id);
+                if (lastGenerateParams.clone_prompt_id) formData.append('clone_prompt_id', lastGenerateParams.clone_prompt_id);
+
+                const response = await fetch('/regenerate', { method: 'POST', body: formData });
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || 'Generate failed');
+                }
+                const data = await response.json();
+
+                // 插入到数组
+                sentenceAudios.splice(afterIndex, 0, data.audio);
+                sentenceTexts.splice(afterIndex, 0, newText.trim());
+                decodedPcmCache = [];
+                rebuildAudioAndSubtitles();
+                saveSession();
+                selectedSentenceIndex = afterIndex;
+                showSentenceEditorView();
+                statusEl.innerHTML = `<span class="text-green-600">${t('status.success')}</span>`;
+
+                // 4. 跳播到新插入的句子
+                const subtitle = currentSubtitles[afterIndex];
+                if (subtitle) {
+                    audioElement.addEventListener('loadedmetadata', function jumpToNew() {
+                        audioElement.currentTime = subtitle.start;
+                        audioElement.play();
+                        audioElement.removeEventListener('loadedmetadata', jumpToNew);
+                    });
+                }
+            } catch (error) {
+                statusEl.innerHTML = `<span class="text-red-600">${t('status.failed')}: ${error.message}</span>`;
+                // 移除占位行并恢复列表状态
+                if (editorList) {
+                    const placeholder = editorList.querySelector('.inserting-row');
+                    if (placeholder) placeholder.remove();
+                    editorList.classList.remove('inserting');
+                }
+            } finally {
+                // 恢复生成按钮
+                btn.disabled = false;
+                btn.innerHTML = originalBtnHtml;
+                btn.onclick = originalBtnOnclick;
+            }
+        }
+
+        // ===== 重建合并音频和字幕 =====
+        function rebuildAudioAndSubtitles() {
+            const merged = mergeAllSentenceAudios();
+            currentSubtitles = merged.subtitles;
+            audioElement.src = URL.createObjectURL(merged.blob);
+            loadWaveform();
+        }
+
+        // 解码 base64 WAV 为 PCM samples（Int16Array）和采样率
+        function decodeBase64Wav(b64) {
+            const binaryString = atob(b64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
+            const wavData = parseWav(bytes.buffer);
+            return wavData; // { samples: Int16Array, sampleRate, numChannels }
+        }
+
+        // 根据句尾标点判断停顿时长（秒），再乘以 pace 倍率
+        function getPauseDuration(text) {
+            if (pausePaceMultiplier === 0) return 0;
+            if (!text || !text.trim()) return 0;
+            // 先检查原始文本是否以换行结尾（段落分隔）
+            if (/[\n\r]\s*$/.test(text)) return 0.6 * pausePaceMultiplier;
+            const trimmed = text.trimEnd();
+            const lastChar = trimmed[trimmed.length - 1];
+            let base = 0;
+            if (/[。？！?!]/.test(lastChar)) base = 0.3;
+            else if (/[；;，,、：:]/.test(lastChar)) base = 0.2;
+            else base = 0.15; // 无标点默认短停顿
+            return base * pausePaceMultiplier;
+        }
+
+        // 将所有 sentenceAudios 合并为一个 WAV Blob，同时重算字幕
+        function mergeAllSentenceAudios() {
+            const allChunks = []; // { samples: Int16Array } 包含音频和静音片段
+            let totalLength = 0;
+            const subtitles = [];
+            let currentTime = 0;
+            let sampleRate = 24000;
+
+            for (let i = 0; i < sentenceAudios.length; i++) {
+                // 优先用缓存，避免重复 base64 解码
+                if (!decodedPcmCache[i] || decodedPcmCache[i]._src !== sentenceAudios[i]) {
+                    const decoded = decodeBase64Wav(sentenceAudios[i]);
+                    decoded._src = sentenceAudios[i]; // 标记来源，音频变化时失效
+                    decodedPcmCache[i] = decoded;
+                }
+                const wav = decodedPcmCache[i];
+                sampleRate = wav.sampleRate;
+
+                // 添加音频
+                allChunks.push(wav.samples);
+                totalLength += wav.samples.length;
+
+                const duration = wav.samples.length / sampleRate;
+                subtitles.push({
+                    text: sentenceTexts[i],
+                    start: Math.round(currentTime * 1000) / 1000,
+                    end: Math.round((currentTime + duration) * 1000) / 1000,
+                });
+                currentTime += duration;
+
+                // 句间插入静音（最后一句除外）
+                if (i < sentenceAudios.length - 1) {
+                    const pauseSec = getPauseDuration(sentenceTexts[i]);
+                    if (pauseSec > 0) {
+                        const silenceSamples = Math.round(pauseSec * sampleRate);
+                        allChunks.push(new Int16Array(silenceSamples)); // 全零 = 静音
+                        totalLength += silenceSamples;
+                        currentTime += pauseSec;
+                    }
+                }
+            }
+
+            // 合并 PCM
+            const merged = new Int16Array(totalLength);
+            let offset = 0;
+            for (const samples of allChunks) {
+                merged.set(samples, offset);
+                offset += samples.length;
+            }
+
+            // 编码为 WAV
+            const wavBlob = encodeWav(merged, sampleRate);
+            return { blob: wavBlob, subtitles };
+        }
+
+        // 将 Int16Array PCM 编码为 WAV Blob
+        function encodeWav(samples, sampleRate) {
+            const numChannels = 1;
+            const bitsPerSample = 16;
+            const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+            const blockAlign = numChannels * bitsPerSample / 8;
+            const dataSize = samples.length * 2;
+            const buffer = new ArrayBuffer(44 + dataSize);
+            const view = new DataView(buffer);
+
+            // RIFF header
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + dataSize, true);
+            writeString(view, 8, 'WAVE');
+            // fmt chunk
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true); // PCM
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, byteRate, true);
+            view.setUint16(32, blockAlign, true);
+            view.setUint16(34, bitsPerSample, true);
+            // data chunk
+            writeString(view, 36, 'data');
+            view.setUint32(40, dataSize, true);
+            // PCM data
+            const output = new Int16Array(buffer, 44);
+            output.set(samples);
+
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+
+        function writeString(view, offset, str) {
+            for (let i = 0; i < str.length; i++) {
+                view.setUint8(offset + i, str.charCodeAt(i));
+            }
+        }
+
+        async function regenerateSentence(index) {
+            if (!lastGenerateParams) return;
+            finishEditing();
+
+            // 保存到撤销栈
+            undoStack.push({ index, audio: sentenceAudios[index], text: sentenceTexts[index] });
+
+            const text = sentenceTexts[index];
+            const item = document.getElementById(`sent-item-${index}`);
+            const actionsEl = item ? item.querySelector('.sentence-editor-actions') : null;
+            let originalActionsHtml = '';
+            if (actionsEl) {
+                originalActionsHtml = actionsEl.innerHTML;
+                actionsEl.innerHTML = `<span class="spinner" style="width:16px;height:16px;border-width:2px;color:#E07A5F"></span><span style="font-size:12px;color:#E07A5F">${t('status.regenerating')}</span>`;
+                actionsEl.style.opacity = '1';
+            }
+            if (item) item.classList.add('regenerating');
+
+            const statusEl = document.getElementById('status-message');
+            statusEl.textContent = t('status.regenerating');
+
+            try {
+                const formData = new FormData();
+                formData.append('sentence_text', text);
+                formData.append('mode', lastGenerateParams.mode);
+                formData.append('language', lastGenerateParams.language);
+                if (lastGenerateParams.speaker) formData.append('speaker', lastGenerateParams.speaker);
+                if (lastGenerateParams.instruct) formData.append('instruct', lastGenerateParams.instruct);
+                if (lastGenerateParams.voice_id) formData.append('voice_id', lastGenerateParams.voice_id);
+                if (lastGenerateParams.clone_prompt_id) formData.append('clone_prompt_id', lastGenerateParams.clone_prompt_id);
+
+                const response = await fetch('/regenerate', { method: 'POST', body: formData });
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || 'Regenerate failed');
+                }
+
+                const data = await response.json();
+
+                // 替换该句的音频和文本
+                sentenceAudios[index] = data.audio;
+                sentenceTexts[index] = text;
+
+                // 前端合并所有句子音频 + 重算字幕
+                rebuildAudioAndSubtitles();
+
+                // 跳转到该句开头播放
+                const subtitle = currentSubtitles[index];
+                if (subtitle) {
+                    audioElement.addEventListener('loadedmetadata', function jumpToSentence() {
+                        audioElement.currentTime = subtitle.start;
+                        audioElement.play();
+                        audioElement.removeEventListener('loadedmetadata', jumpToSentence);
+                    });
+                }
+
+                statusEl.innerHTML = `<span class="text-green-600">${t('status.success')}</span>`;
+                saveSession(); // 持久化
+
+                // 重新渲染句子列表
+                selectedSentenceIndex = index;
+                showSentenceEditorView();
+
+            } catch (error) {
+                // 回滚撤销栈（生成失败，无需撤销）
+                undoStack.pop();
+                statusEl.innerHTML = `<span class="text-red-600">${t('status.failed')}: ${error.message}</span>`;
+                // 恢复按钮
+                if (actionsEl) {
+                    actionsEl.innerHTML = originalActionsHtml;
+                    actionsEl.style.opacity = '';
+                }
+                if (item) item.classList.remove('regenerating');
+            }
         }
 
         // HTML 转义
@@ -1138,8 +1971,26 @@
                             eventSource.close();
                             currentEventSource = null;
                             isGenerating = false;
-                            hideProgressView();
                             currentSubtitles = data.subtitles || null;
+
+                            // 保存每句音频和文本
+                            if (data.sentence_audios) {
+                                sentenceAudios = data.sentence_audios;
+                                sentenceTexts = (data.subtitles || []).map(s => s.text);
+                            }
+                            if (data.clone_prompt_id) {
+                                clonePromptId = data.clone_prompt_id;
+                                if (lastGenerateParams) lastGenerateParams.clone_prompt_id = data.clone_prompt_id;
+                            }
+                            saveSession(); // 持久化
+
+                            // 显示句子编辑视图（而非隐藏进度）
+                            if (sentenceTexts.length > 1) {
+                                selectedSentenceIndex = -1;
+                                showSentenceEditorView();
+                            } else {
+                                hideProgressView();
+                            }
 
                             // 将 base64 转为 blob URL
                             const binaryString = atob(data.audio);
@@ -1232,6 +2083,16 @@
                                 }
                                 if (data.done) {
                                     currentSubtitles = data.subtitles || null;
+                                    // 保存每句音频和文本
+                                    if (data.sentence_audios) {
+                                        sentenceAudios = data.sentence_audios;
+                                        sentenceTexts = (data.subtitles || []).map(s => s.text);
+                                    }
+                                    if (data.clone_prompt_id) {
+                                        clonePromptId = data.clone_prompt_id;
+                                        if (lastGenerateParams) lastGenerateParams.clone_prompt_id = data.clone_prompt_id;
+                                    }
+                                    saveSession(); // 持久化
                                     const binaryString = atob(data.audio);
                                     const bytes = new Uint8Array(binaryString.length);
                                     for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
@@ -1244,7 +2105,13 @@
                 }
 
                 isGenerating = false;
-                hideProgressView();
+                // 显示句子编辑视图（而非隐藏进度）
+                if (sentenceTexts.length > 1) {
+                    selectedSentenceIndex = -1;
+                    showSentenceEditorView();
+                } else {
+                    hideProgressView();
+                }
                 btn.onclick = generate;
                 return result;
             } catch (error) {
@@ -1287,6 +2154,17 @@
             btn.innerHTML = `<span class="spinner"></span><span>${t('status.generating')}</span>`;
             statusEl.textContent = '';
 
+            // 清除上次的句子编辑状态
+            sentenceAudios = [];
+            sentenceTexts = [];
+            decodedPcmCache = [];
+            selectedSentenceIndex = -1;
+            clonePromptId = null;
+            undoStack = [];
+            clearSession(); // 清除持久化
+            const hintEl = document.getElementById('sentence-view-hint');
+            if (hintEl) hintEl.classList.add('hidden');
+
             // 确保模型加载
             const modelType = currentMode === 'preset' ? 'custom' : currentMode;
             const modelReady = await ensureModelLoaded(modelType);
@@ -1305,6 +2183,8 @@
                     const language = document.getElementById('language-preset').value;
                     const instruct = document.getElementById('instruct').value.trim();
 
+                    lastGenerateParams = { mode: 'preset', speaker, language, instruct: instruct || null };
+
                     // 使用分句进度生成
                     const params = new URLSearchParams({ text, speaker, language });
                     if (instruct) params.append('instruct', instruct);
@@ -1316,13 +2196,11 @@
                     stats = result.stats;
 
                     // 跳过后面的 response 处理
+                    loadWaveform();
                     audioElement.play();
                     document.getElementById('player-section').classList.remove('hidden');
 
-                    if (stats) {
-                        document.getElementById('stats-chars').textContent = `${stats.char_count} ${t('stats.chars')} · ${stats.sentence_count} ${t('stats.sentences')} · ${stats.elapsed}s`;
-                        document.getElementById('stats-speed').textContent = `${stats.avg_per_char}s/${t('stats.chars')}`;
-                    }
+                    if (stats) { lastStatsData = stats; renderStats(); }
 
                     statusEl.innerHTML = `<span class="text-green-600">${t('status.success')}</span>`;
                     document.getElementById('save-voice-section').classList.add('hidden');
@@ -1336,6 +2214,8 @@
                     const refText = document.getElementById('ref-text').value.trim();
 
                     if (selectedVoiceId) {
+                        lastGenerateParams = { mode: 'saved_voice', language, voice_id: selectedVoiceId };
+
                         // 使用声音库的分句进度生成
                         const params = new URLSearchParams({ text });
                         if (language) params.append('language', language);
@@ -1346,13 +2226,11 @@
                         audioElement.src = result.audioUrl;
                         stats = result.stats;
 
+                        loadWaveform();
                         audioElement.play();
                         document.getElementById('player-section').classList.remove('hidden');
 
-                        if (stats) {
-                            document.getElementById('stats-chars').textContent = `${stats.char_count} ${t('stats.chars')} · ${stats.sentence_count} ${t('stats.sentences')} · ${stats.elapsed}s`;
-                            document.getElementById('stats-speed').textContent = `${stats.avg_per_char}s/${t('stats.chars')}`;
-                        }
+                        if (stats) { lastStatsData = stats; renderStats(); }
 
                         statusEl.innerHTML = `<span class="text-green-600">${t('status.success')}</span>`;
                         document.getElementById('save-voice-section').classList.add('hidden');
@@ -1361,6 +2239,8 @@
                         btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t('btn.generate')}</span>`;
                         return;
                     } else {
+                        lastGenerateParams = { mode: 'clone', language, clone_prompt_id: null };
+
                         // 使用克隆进度生成
                         const audioFile = recordedBlob ? new File([recordedBlob], 'recording.webm', { type: 'audio/webm' }) : selectedFile;
                         const formData = new FormData();
@@ -1375,13 +2255,11 @@
                         audioElement.src = result.audioUrl;
                         stats = result.stats;
 
+                        loadWaveform();
                         audioElement.play();
                         document.getElementById('player-section').classList.remove('hidden');
 
-                        if (stats) {
-                            document.getElementById('stats-chars').textContent = `${stats.char_count} ${t('stats.chars')} · ${stats.sentence_count} ${t('stats.sentences')} · ${stats.elapsed}s`;
-                            document.getElementById('stats-speed').textContent = `${stats.avg_per_char}s/${t('stats.chars')}`;
-                        }
+                        if (stats) { lastStatsData = stats; renderStats(); }
 
                         statusEl.innerHTML = `<span class="text-green-600">${t('status.success')}</span>`;
                         document.getElementById('save-voice-section').classList.remove('hidden');
@@ -1395,6 +2273,8 @@
                     const language = document.getElementById('language-design').value;
                     const desc = document.getElementById('voice-desc').value.trim();
 
+                    lastGenerateParams = { mode: 'design', language, instruct: desc };
+
                     // 使用声音设计的分句进度生成
                     const params = new URLSearchParams({ text, language, instruct: desc });
 
@@ -1404,13 +2284,11 @@
                     audioElement.src = result.audioUrl;
                     stats = result.stats;
 
+                    loadWaveform();
                     audioElement.play();
                     document.getElementById('player-section').classList.remove('hidden');
 
-                    if (stats) {
-                        document.getElementById('stats-chars').textContent = `${stats.char_count} ${t('stats.chars')} · ${stats.sentence_count} ${t('stats.sentences')} · ${stats.elapsed}s`;
-                        document.getElementById('stats-speed').textContent = `${stats.avg_per_char}s/${t('stats.chars')}`;
-                    }
+                    if (stats) { lastStatsData = stats; renderStats(); }
 
                     statusEl.innerHTML = `<span class="text-green-600">${t('status.success')}</span>`;
                     document.getElementById('save-voice-section').classList.add('hidden');
@@ -1428,6 +2306,7 @@
                 // 播放音频
                 const blob = await response.blob();
                 audioElement.src = URL.createObjectURL(blob);
+                loadWaveform();
                 audioElement.play();
 
                 // 显示播放器
@@ -1439,8 +2318,8 @@
                 const avgPerChar = response.headers.get('X-Avg-Per-Char');
 
                 if (charCount && elapsed) {
-                    document.getElementById('stats-chars').textContent = `${charCount} ${t('stats.chars')} · ${elapsed}s`;
-                    document.getElementById('stats-speed').textContent = `${avgPerChar}s/${t('stats.chars')}`;
+                    lastStatsData = { char_count: charCount, sentence_count: null, elapsed, avg_per_char: avgPerChar };
+                    renderStats();
                 }
 
                 statusEl.innerHTML = `<span class="text-green-600">${t('status.success')}</span>`;
@@ -1507,13 +2386,6 @@
             } else {
                 audioElement.pause();
             }
-        }
-
-        function seek(event) {
-            const bar = event.currentTarget;
-            const rect = bar.getBoundingClientRect();
-            const percent = (event.clientX - rect.left) / rect.width;
-            audioElement.currentTime = percent * audioElement.duration;
         }
 
         function formatTime(seconds) {
@@ -1714,10 +2586,61 @@
             });
         }
 
+        let playingSentenceIndex = -1;
+
+        function updatePlaybackHighlight(currentTime) {
+            if (!currentSubtitles || !currentSubtitles.length) return;
+
+            // 找到当前播放的句子
+            let newIndex = -1;
+            for (let i = 0; i < currentSubtitles.length; i++) {
+                const sub = currentSubtitles[i];
+                if (currentTime >= sub.start && currentTime < sub.end) {
+                    newIndex = i;
+                    break;
+                }
+            }
+
+            if (newIndex === playingSentenceIndex) return;
+            playingSentenceIndex = newIndex;
+
+            // 检查句子编辑视图是否可见
+            const progressView = document.getElementById('progress-view');
+            if (progressView.classList.contains('hidden')) return;
+            const items = progressView.querySelectorAll('.sentence-editor-item');
+            if (!items.length) return;
+
+            items.forEach((el, i) => {
+                // 跳过正在编辑的句子
+                const textEl = el.querySelector('[contenteditable="true"]');
+                if (textEl) return;
+
+                el.classList.remove('playing', 'played');
+                if (i === newIndex) {
+                    el.classList.add('playing');
+                } else if (newIndex >= 0 && i < newIndex) {
+                    el.classList.add('played');
+                }
+            });
+
+            // 自动滚动到当前句子
+            if (newIndex >= 0 && items[newIndex]) {
+                items[newIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+
+        function clearPlaybackHighlight() {
+            playingSentenceIndex = -1;
+            document.querySelectorAll('.sentence-editor-item.playing, .sentence-editor-item.played').forEach(el => {
+                el.classList.remove('playing', 'played');
+            });
+        }
+
         audioElement.addEventListener('timeupdate', () => {
-            const progress = (audioElement.currentTime / audioElement.duration) * 100 || 0;
-            document.getElementById('progress').style.width = `${progress}%`;
-            document.getElementById('current-time').textContent = formatTime(audioElement.currentTime);
+            if (!wavesurfer) {
+                document.getElementById('current-time').textContent = formatTime(audioElement.currentTime);
+                updatePlaybackHighlight(audioElement.currentTime);
+            }
         });
 
         audioElement.addEventListener('loadedmetadata', () => {
@@ -1726,14 +2649,115 @@
 
         audioElement.addEventListener('play', () => {
             document.getElementById('play-icon').innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
+            updatePlaybackHighlight(audioElement.currentTime);
         });
 
         audioElement.addEventListener('pause', () => {
             document.getElementById('play-icon').innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
+            clearPlaybackHighlight();
         });
 
         audioElement.addEventListener('ended', () => {
             document.getElementById('play-icon').innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
+            clearPlaybackHighlight();
+            if (_sentencePreviewEndHandler) {
+                audioElement.removeEventListener('timeupdate', _sentencePreviewEndHandler);
+                _sentencePreviewEndHandler = null;
+                sentencePreviewIndex = -1;
+                showSentenceEditorView();
+            }
+        });
+
+        // ===== 键盘快捷键 =====
+        function isSentenceEditorVisible() {
+            const pv = document.getElementById('progress-view');
+            return pv && !pv.classList.contains('hidden') && pv.querySelector('.sentence-editor-list');
+        }
+
+        function isEditingText() {
+            const el = document.activeElement;
+            if (!el) return false;
+            if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') return true;
+            if (el.contentEditable === 'true') return true;
+            return false;
+        }
+
+        document.addEventListener('keydown', (e) => {
+            // Ctrl+Z / Cmd+Z: 撤销（全局，不在输入框时）
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !isEditingText()) {
+                if (isSentenceEditorVisible() && undoStack.length > 0) {
+                    e.preventDefault();
+                    undoRegenerate();
+                    return;
+                }
+            }
+
+            // 以下快捷键仅在句子编辑视图可见时生效
+            if (!isSentenceEditorVisible()) return;
+
+            // 正在编辑句子文本时，只处理 Esc
+            if (isEditingText()) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    finishEditing();
+                }
+                return;
+            }
+
+            switch (e.key) {
+                case ' ':  // 空格: 播放/暂停
+                    e.preventDefault();
+                    togglePlay();
+                    break;
+                case 'ArrowUp':  // ↑: 上一句
+                    e.preventDefault();
+                    if (selectedSentenceIndex > 0) {
+                        selectedSentenceIndex--;
+                    } else if (selectedSentenceIndex === -1 && sentenceTexts.length > 0) {
+                        selectedSentenceIndex = 0;
+                    }
+                    document.querySelectorAll('.sentence-editor-item').forEach((el, i) => {
+                        el.classList.toggle('selected', i === selectedSentenceIndex);
+                    });
+                    document.getElementById(`sent-item-${selectedSentenceIndex}`)?.scrollIntoView({ block: 'nearest' });
+                    break;
+                case 'ArrowDown':  // ↓: 下一句
+                    e.preventDefault();
+                    if (selectedSentenceIndex < sentenceTexts.length - 1) {
+                        selectedSentenceIndex++;
+                    } else if (selectedSentenceIndex === -1 && sentenceTexts.length > 0) {
+                        selectedSentenceIndex = 0;
+                    }
+                    document.querySelectorAll('.sentence-editor-item').forEach((el, i) => {
+                        el.classList.toggle('selected', i === selectedSentenceIndex);
+                    });
+                    document.getElementById(`sent-item-${selectedSentenceIndex}`)?.scrollIntoView({ block: 'nearest' });
+                    break;
+                case 'Enter':  // Enter: 重新生成选中句
+                    if (selectedSentenceIndex >= 0) {
+                        e.preventDefault();
+                        regenerateSentence(selectedSentenceIndex);
+                    }
+                    break;
+                case 'Escape':  // Esc: 取消选中
+                    e.preventDefault();
+                    selectedSentenceIndex = -1;
+                    document.querySelectorAll('.sentence-editor-item').forEach(el => el.classList.remove('selected'));
+                    break;
+                case 'p':  // P: 试听选中句
+                    if (selectedSentenceIndex >= 0) {
+                        e.preventDefault();
+                        previewSentenceAudio(selectedSentenceIndex);
+                    }
+                    break;
+                case 'Delete':  // Delete: 删除选中句
+                case 'Backspace':
+                    if (selectedSentenceIndex >= 0) {
+                        e.preventDefault();
+                        deleteSentence(selectedSentenceIndex);
+                    }
+                    break;
+            }
         });
 
         // ===== 初始化 =====
@@ -1742,6 +2766,7 @@
             updateI18n();
             loadSavedVoices();
             updateCharCount();
+            restoreSession(); // 恢复上次会话
         });
     </script>
 </body>

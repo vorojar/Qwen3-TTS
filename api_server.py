@@ -74,6 +74,9 @@ MODEL_CONFIGS = {
 # 已保存的克隆声音 prompt 缓存 (voice_id -> VoiceClonePromptItem)
 saved_voice_prompts = {}
 
+# 克隆会话 prompt 缓存 (session_id -> {"prompt": VoiceClonePromptItem, "created_at": float})
+clone_session_prompts = {}
+
 
 def save_voice_prompt(voice_id: str, prompt_item):
     """将 VoiceClonePromptItem 保存到磁盘"""
@@ -500,6 +503,7 @@ async def tts_with_progress(
 
             # 收集所有音频和字幕时间
             all_audio = []
+            sentence_audios_b64 = []
             subtitles = []
             current_time = 0.0
             sample_rate = SAMPLE_RATE
@@ -529,6 +533,13 @@ async def tts_with_progress(
 
                 all_audio.append(wavs[0])
                 sample_rate = sr
+
+                # 编码单句音频为 base64
+                sent_buf = io.BytesIO()
+                sf.write(sent_buf, wavs[0], sr, format='WAV')
+                sent_buf.seek(0)
+                sentence_audios_b64.append(base64.b64encode(sent_buf.read()).decode('utf-8'))
+
                 # 记录字幕时间
                 duration = len(wavs[0]) / sr
                 subtitles.append({"text": sentence, "start": round(current_time, 3), "end": round(current_time + duration, 3)})
@@ -567,6 +578,7 @@ async def tts_with_progress(
                 "audio": audio_base64,
                 "sample_rate": sample_rate,
                 "subtitles": subtitles,
+                "sentence_audios": sentence_audios_b64,
                 "stats": {
                     "char_count": total_chars,
                     "sentence_count": total,
@@ -728,7 +740,20 @@ async def voice_clone_progress(
             )
             voice_prompt = prompts[0]
 
+            # 缓存 clone session prompt
+            import uuid as _uuid
+            clone_session_id = _uuid.uuid4().hex
+            clone_session_prompts[clone_session_id] = {
+                "prompt": voice_prompt,
+                "created_at": time.time(),
+            }
+            # 清理过期缓存（1小时）
+            expired = [k for k, v in clone_session_prompts.items() if time.time() - v["created_at"] > 3600]
+            for k in expired:
+                del clone_session_prompts[k]
+
             all_audio = []
+            sentence_audios_b64 = []
             subtitles = []
             current_time = 0.0
             sample_rate = SAMPLE_RATE
@@ -754,6 +779,13 @@ async def voice_clone_progress(
 
                 all_audio.append(wavs[0])
                 sample_rate = sr
+
+                # 编码单句音频为 base64
+                sent_buf = io.BytesIO()
+                sf.write(sent_buf, wavs[0], sr, format='WAV')
+                sent_buf.seek(0)
+                sentence_audios_b64.append(base64.b64encode(sent_buf.read()).decode('utf-8'))
+
                 duration = len(wavs[0]) / sr
                 subtitles.append({"text": sentence, "start": round(current_time, 3), "end": round(current_time + duration, 3)})
                 current_time += duration
@@ -786,6 +818,8 @@ async def voice_clone_progress(
                 "audio": audio_base64,
                 "sample_rate": sample_rate,
                 "subtitles": subtitles,
+                "sentence_audios": sentence_audios_b64,
+                "clone_prompt_id": clone_session_id,
                 "stats": {
                     "char_count": total_chars,
                     "sentence_count": total,
@@ -915,7 +949,12 @@ async def voice_design_progress(
             total = len(sentences)
             total_chars = len(text)
 
-            print(f"[设计进度] 开始生成: {total_chars} 字 | {total} 句 | 语言: {language}")
+            # 多句时需要 clone 模型来保持音色一致
+            use_clone_for_consistency = total > 1 and model_status["clone"] == "loaded"
+            if total > 1 and model_status["clone"] != "loaded":
+                print(f"[设计进度] 警告: clone 模型未加载，多句生成将使用 design 模型（音色可能不一致）")
+
+            print(f"[设计进度] 开始生成: {total_chars} 字 | {total} 句 | 语言: {language} | 跨句一致: {use_clone_for_consistency}")
             start_time = time.time()
 
             # 发送开始信号
@@ -923,10 +962,13 @@ async def voice_design_progress(
 
             # 收集所有音频和字幕时间
             all_audio = []
+            sentence_audios_b64 = []
             subtitles = []
             current_time = 0.0
             sample_rate = SAMPLE_RATE
             loop = asyncio.get_event_loop()
+            voice_prompt = None
+            clone_session_id = None
 
             for i, sentence in enumerate(sentences):
                 # 检查客户端是否断开
@@ -934,15 +976,49 @@ async def voice_design_progress(
                     print(f"[设计进度] 客户端已断开，停止生成 ({i}/{total})")
                     return
 
-                # 在线程池中运行阻塞的模型推理
-                wavs, sr = await loop.run_in_executor(
-                    None,
-                    lambda s=sentence: model_design.generate_voice_design(
-                        text=s,
-                        language=language,
-                        instruct=instruct,
+                if i == 0 or not use_clone_for_consistency:
+                    # 第一句（或不使用跨句一致时所有句子）：用 design 模型生成
+                    wavs, sr = await loop.run_in_executor(
+                        None,
+                        lambda s=sentence: model_design.generate_voice_design(
+                            text=s,
+                            language=language,
+                            instruct=instruct,
+                        )
                     )
-                )
+
+                    # 第一句且多句模式：用生成的音频创建 clone prompt
+                    if i == 0 and use_clone_for_consistency:
+                        import uuid as _uuid
+                        voice_prompt = await loop.run_in_executor(
+                            None,
+                            lambda audio=wavs[0], sr=sr, ref=sentence: model_clone.create_voice_clone_prompt(
+                                ref_audio=(audio, sr),
+                                ref_text=ref,
+                            )
+                        )
+                        voice_prompt = voice_prompt[0]
+                        # 缓存 prompt（复用 clone_session_prompts 机制）
+                        clone_session_id = _uuid.uuid4().hex
+                        clone_session_prompts[clone_session_id] = {
+                            "prompt": voice_prompt,
+                            "created_at": time.time(),
+                        }
+                        # 清理过期缓存（1小时）
+                        expired = [k for k, v in clone_session_prompts.items() if time.time() - v["created_at"] > 3600]
+                        for k in expired:
+                            del clone_session_prompts[k]
+                        print(f"[设计进度] 已从第一句创建 clone prompt，后续句子将使用 clone 模型")
+                else:
+                    # 后续句：用 clone 模型 + voice_prompt 生成（保持音色一致）
+                    wavs, sr = await loop.run_in_executor(
+                        None,
+                        lambda s=sentence, vp=voice_prompt: model_clone.generate_voice_clone(
+                            text=s,
+                            language=language,
+                            voice_clone_prompt=[vp],
+                        )
+                    )
 
                 # 生成后再次检查断开
                 if await request.is_disconnected():
@@ -951,6 +1027,13 @@ async def voice_design_progress(
 
                 all_audio.append(wavs[0])
                 sample_rate = sr
+
+                # 编码单句音频为 base64
+                sent_buf = io.BytesIO()
+                sf.write(sent_buf, wavs[0], sr, format='WAV')
+                sent_buf.seek(0)
+                sentence_audios_b64.append(base64.b64encode(sent_buf.read()).decode('utf-8'))
+
                 duration = len(wavs[0]) / sr
                 subtitles.append({"text": sentence, "start": round(current_time, 3), "end": round(current_time + duration, 3)})
                 current_time += duration
@@ -988,6 +1071,7 @@ async def voice_design_progress(
                 "audio": audio_base64,
                 "sample_rate": sample_rate,
                 "subtitles": subtitles,
+                "sentence_audios": sentence_audios_b64,
                 "stats": {
                     "char_count": total_chars,
                     "sentence_count": total,
@@ -995,6 +1079,8 @@ async def voice_design_progress(
                     "avg_per_char": round(avg_per_char, 3),
                 }
             }
+            if clone_session_id:
+                done_data["clone_prompt_id"] = clone_session_id
             yield f"data: {json.dumps(done_data, ensure_ascii=False)}\n\n"
 
         except asyncio.CancelledError:
@@ -1014,6 +1100,111 @@ async def voice_design_progress(
             "X-Accel-Buffering": "no",
         }
     )
+
+
+@app.post("/regenerate")
+async def regenerate_sentence(
+    sentence_text: str = Form(..., description="新的句子文本"),
+    mode: str = Form(..., description="模式: preset / clone / design / saved_voice"),
+    language: str = Form("Chinese", description="语言"),
+    speaker: str = Form(None, description="说话人（preset 模式）"),
+    instruct: str = Form(None, description="情感指令（preset 模式）或声音描述（design 模式）"),
+    voice_id: str = Form(None, description="声音库 ID（saved_voice 模式）"),
+    clone_prompt_id: str = Form(None, description="克隆会话 ID（clone 模式）"),
+):
+    """
+    单句重新生成
+
+    只生成单句音频返回，合并和字幕计算由前端完成
+    """
+    import base64
+
+    try:
+        print(f"[重新生成] 模式: {mode} | {sentence_text[:30]}...")
+        start_time = time.time()
+
+        if mode == "preset":
+            if model_status["custom"] != "loaded":
+                raise HTTPException(status_code=503, detail="CustomVoice 模型未加载")
+            wavs, sr = model_custom.generate_custom_voice(
+                text=sentence_text,
+                language=language,
+                speaker=speaker or "vivian",
+                instruct=instruct,
+            )
+        elif mode == "clone":
+            if model_status["clone"] != "loaded":
+                raise HTTPException(status_code=503, detail="Clone 模型未加载")
+            if not clone_prompt_id or clone_prompt_id not in clone_session_prompts:
+                raise HTTPException(status_code=400, detail="克隆会话已过期，请重新生成")
+            voice_prompt = clone_session_prompts[clone_prompt_id]["prompt"]
+            wavs, sr = model_clone.generate_voice_clone(
+                text=sentence_text,
+                language=language,
+                voice_clone_prompt=[voice_prompt],
+            )
+        elif mode == "design":
+            if clone_prompt_id and clone_prompt_id in clone_session_prompts:
+                # 用缓存的 clone prompt 保持音色一致
+                if model_status["clone"] != "loaded":
+                    raise HTTPException(status_code=503, detail="Clone 模型未加载")
+                voice_prompt = clone_session_prompts[clone_prompt_id]["prompt"]
+                wavs, sr = model_clone.generate_voice_clone(
+                    text=sentence_text,
+                    language=language,
+                    voice_clone_prompt=[voice_prompt],
+                )
+            else:
+                # fallback: 无缓存，用 design 模型（音色可能不一致）
+                if model_status["design"] != "loaded":
+                    raise HTTPException(status_code=503, detail="VoiceDesign 模型未加载")
+                wavs, sr = model_design.generate_voice_design(
+                    text=sentence_text,
+                    language=language,
+                    instruct=instruct or "",
+                )
+        elif mode == "saved_voice":
+            if model_status["clone"] != "loaded":
+                raise HTTPException(status_code=503, detail="Clone 模型未加载")
+            if not voice_id:
+                raise HTTPException(status_code=400, detail="缺少 voice_id")
+            voice_dir = VOICES_DIR / voice_id
+            if not voice_dir.exists():
+                raise HTTPException(status_code=404, detail="声音不存在")
+            meta_file = voice_dir / "meta.json"
+            with open(meta_file, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            audio_path = voice_dir / meta["audio_file"]
+            ref_text = meta.get("ref_text", "")
+            voice_prompt = get_or_create_voice_prompt(voice_id, str(audio_path), ref_text)
+            wavs, sr = model_clone.generate_voice_clone(
+                text=sentence_text,
+                language=language,
+                voice_clone_prompt=[voice_prompt],
+            )
+        else:
+            raise HTTPException(status_code=400, detail=f"不支持的模式: {mode}")
+
+        elapsed = time.time() - start_time
+        print(f"[重新生成] 完成: {elapsed:.2f}s")
+
+        # 编码新句音频为 base64
+        new_sent_buf = io.BytesIO()
+        sf.write(new_sent_buf, wavs[0], sr, format='WAV')
+        new_sent_buf.seek(0)
+        new_audio_b64 = base64.b64encode(new_sent_buf.read()).decode('utf-8')
+
+        return JSONResponse({
+            "audio": new_audio_b64,
+            "sample_rate": sr,
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/voices")
@@ -1315,6 +1506,7 @@ async def tts_with_saved_voice_progress(
 
             # 收集所有音频和字幕时间
             all_audio = []
+            sentence_audios_b64 = []
             subtitles = []
             current_time = 0.0
             sample_rate = SAMPLE_RATE
@@ -1343,6 +1535,13 @@ async def tts_with_saved_voice_progress(
 
                 all_audio.append(wavs[0])
                 sample_rate = sr
+
+                # 编码单句音频为 base64
+                sent_buf = io.BytesIO()
+                sf.write(sent_buf, wavs[0], sr, format='WAV')
+                sent_buf.seek(0)
+                sentence_audios_b64.append(base64.b64encode(sent_buf.read()).decode('utf-8'))
+
                 duration = len(wavs[0]) / sr
                 subtitles.append({"text": sentence, "start": round(current_time, 3), "end": round(current_time + duration, 3)})
                 current_time += duration
@@ -1380,6 +1579,7 @@ async def tts_with_saved_voice_progress(
                 "audio": audio_base64,
                 "sample_rate": sample_rate,
                 "subtitles": subtitles,
+                "sentence_audios": sentence_audios_b64,
                 "stats": {
                     "char_count": total_chars,
                     "sentence_count": total,
