@@ -39,6 +39,7 @@ app.add_middleware(
 )
 
 BASE_DIR = Path(__file__).parent
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 VOICES_DIR = BASE_DIR / "saved_voices"
 VOICES_DIR.mkdir(exist_ok=True)
 
