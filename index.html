@@ -50,13 +50,14 @@
 
         <!-- 主内容区 -->
         <div class="flex-1 flex overflow-hidden">
-            <!-- 左侧边栏：历史记录 -->
+            <!-- 左侧边栏：项目管理 -->
             <aside class="w-56 bg-cream-dark border-r border-warm-gray flex flex-col flex-shrink-0">
                 <div class="p-3 flex items-center justify-between">
-                    <span class="text-sm font-medium text-charcoal/70" data-i18n="sidebar.history">历史记录</span>
+                    <span class="text-sm font-medium text-charcoal/70" data-i18n="sidebar.projects">项目</span>
+                    <button onclick="createProject()" class="text-charcoal/40 hover:text-accent text-lg leading-none" title="新建项目">＋</button>
                 </div>
-                <div id="history-list" class="flex-1 overflow-y-auto scrollbar-thin px-3 pb-3 space-y-1">
-                    <!-- 历史记录列表 -->
+                <div id="project-list" class="flex-1 overflow-y-auto scrollbar-thin px-2 pb-3">
+                    <!-- 项目树 -->
                 </div>
                 <!-- 底部版本信息 -->
                 <div class="mt-auto p-3 border-t border-warm-gray text-xs text-charcoal/40">

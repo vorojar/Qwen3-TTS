@@ -49,14 +49,126 @@ body {
   font-weight: 600;
 }
 
-/* History sidebar */
-.history-item {
-  padding: 8px 10px;
+/* Project sidebar */
+.project-group {
+  margin-bottom: 2px;
+}
+.project-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.15s;
+  user-select: none;
 }
-.history-item:hover {
+.project-header:hover {
+  background: #ede8df;
+}
+.project-group.current > .project-header {
+  background: #ede8df;
+}
+.project-arrow {
+  font-size: 10px;
+  color: #a0aec0;
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.project-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2d3748;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.project-del-btn {
+  opacity: 0;
+  border: none;
+  background: none;
+  color: #a0aec0;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 4px;
+  flex-shrink: 0;
+  transition:
+    opacity 0.15s,
+    color 0.15s;
+}
+.project-header:hover .project-del-btn {
+  opacity: 1;
+}
+.project-del-btn:hover {
+  color: #e53e3e;
+}
+
+.project-chapters {
+  padding-left: 20px;
+  padding-bottom: 4px;
+}
+.chapter-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.chapter-item:hover {
+  background: #ede8df;
+}
+.chapter-item.active {
+  background: #fef3e2;
+  border-left: 2px solid #e07a5f;
+  padding-left: 6px;
+}
+.chapter-name {
+  flex: 1;
+  font-size: 12px;
+  color: #4a5568;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.chapter-item.active .chapter-name {
+  color: #2d3748;
+  font-weight: 500;
+}
+.chapter-del-btn {
+  opacity: 0;
+  border: none;
+  background: none;
+  color: #a0aec0;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0 3px;
+  flex-shrink: 0;
+  transition:
+    opacity 0.15s,
+    color 0.15s;
+}
+.chapter-item:hover .chapter-del-btn {
+  opacity: 1;
+}
+.chapter-del-btn:hover {
+  color: #e53e3e;
+}
+.chapter-add {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #a0aec0;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: all 0.15s;
+}
+.chapter-add:hover {
+  color: #e07a5f;
   background: #f5f0e8;
 }
 

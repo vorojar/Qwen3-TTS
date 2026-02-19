@@ -858,11 +858,16 @@ async function confirmInsert(afterIndex) {
 }
 
 // ===== 分句预览模式 =====
-function enterPreviewMode() {
+async function enterPreviewMode() {
   const text = document.getElementById("text-input").value.trim();
   if (!text) {
     document.getElementById("status-message").textContent = t("status.enterText");
     return;
+  }
+  // 没有项目时自动创建
+  if (!currentProjectId) {
+    await createProject(t("project.untitled"));
+    if (!currentProjectId) return; // 用户取消了
   }
   // 按段落分再分句，记录段落边界
   const rawParagraphs = text.split('\n').filter(p => p.trim());
