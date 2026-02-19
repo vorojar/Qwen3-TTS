@@ -173,7 +173,11 @@ async function generateWithProgress(url, btn, statusEl) {
 
         if (data.started) {
           totalSentences = data.total;
-          statusEl.textContent = `${t("status.generating")} 0/${totalSentences} ${t("stats.sentences")} (0%)`;
+          if (data.paragraphs > 1) {
+            statusEl.textContent = `${t("status.generating")} ${t("status.paragraph")} 1/${data.paragraphs}`;
+          } else {
+            statusEl.textContent = t("status.generating");
+          }
           // 显示停止按钮
           btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${t("btn.stop")}</span>`;
           btn.disabled = false;
@@ -183,9 +187,30 @@ async function generateWithProgress(url, btn, statusEl) {
         }
 
         if (data.progress) {
-          const { current, total, percent } = data.progress;
-          btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${current}/${total} ${t("stats.sentences")} (${percent}%)</span>`;
-          statusEl.textContent = `${t("status.generating")} ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
+          const {
+            current,
+            total,
+            percent,
+            paragraph,
+            total_paragraphs,
+            generating,
+          } = data.progress;
+          if (generating) {
+            // 段落开始生成：显示"段落 X/Y 生成中..."
+            if (total_paragraphs > 1) {
+              statusEl.textContent = `${t("status.generating")} ${t("status.paragraph")} ${paragraph}/${total_paragraphs}`;
+            } else {
+              statusEl.textContent = t("status.generating");
+            }
+          } else {
+            // 段落完成：更新句子进度
+            btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${current}/${total} ${t("stats.sentences")} (${percent}%)</span>`;
+            if (total_paragraphs > 1) {
+              statusEl.textContent = `${t("status.generating")} ${t("status.paragraph")} ${paragraph}/${total_paragraphs} — ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
+            } else {
+              statusEl.textContent = `${t("status.generating")} ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
+            }
+          }
           // 更新句子样式
           updateGeneratingProgress(current);
         }
@@ -300,13 +325,36 @@ async function generateWithProgressPost(url, formData, btn, statusEl) {
           try {
             const data = JSON.parse(line.slice(6));
             if (data.started) {
-              statusEl.textContent = `${t("status.generating")} 0/${data.total} ${t("stats.sentences")} (0%)`;
+              if (data.paragraphs > 1) {
+                statusEl.textContent = `${t("status.generating")} ${t("status.paragraph")} 1/${data.paragraphs}`;
+              } else {
+                statusEl.textContent = t("status.generating");
+              }
               updateGeneratingProgress(0);
             }
             if (data.progress) {
-              const { current, total, percent } = data.progress;
-              btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${current}/${total} ${t("stats.sentences")} (${percent}%)</span>`;
-              statusEl.textContent = `${t("status.generating")} ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
+              const {
+                current,
+                total,
+                percent,
+                paragraph,
+                total_paragraphs,
+                generating,
+              } = data.progress;
+              if (generating) {
+                if (total_paragraphs > 1) {
+                  statusEl.textContent = `${t("status.generating")} ${t("status.paragraph")} ${paragraph}/${total_paragraphs}`;
+                } else {
+                  statusEl.textContent = t("status.generating");
+                }
+              } else {
+                btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${current}/${total} ${t("stats.sentences")} (${percent}%)</span>`;
+                if (total_paragraphs > 1) {
+                  statusEl.textContent = `${t("status.generating")} ${t("status.paragraph")} ${paragraph}/${total_paragraphs} — ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
+                } else {
+                  statusEl.textContent = `${t("status.generating")} ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
+                }
+              }
               updateGeneratingProgress(current);
             }
             if (data.done) {

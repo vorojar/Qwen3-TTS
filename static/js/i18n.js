@@ -76,6 +76,7 @@ const i18n = {
     "sidebar.history": "历史记录",
     "history.empty": "暂无历史记录",
     "status.selectVoice": "请选择一个声音",
+    "status.paragraph": "段落",
   },
   en: {
     "nav.preset": "Preset Voices",
@@ -153,6 +154,7 @@ const i18n = {
     "sidebar.history": "History",
     "history.empty": "No history yet",
     "status.selectVoice": "Please select a voice",
+    "status.paragraph": "Paragraph",
   },
 };
 
