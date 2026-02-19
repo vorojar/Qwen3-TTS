@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Qwen3-TTS web application - a Text-to-Speech service powered by Alibaba's Qwen3-TTS models. Three modes: preset voice synthesis (9 speakers + emotion control), voice cloning (from reference audio), and voice design (natural language voice description). Includes a voice library for saving/reusing cloned voices, sentence-by-sentence generation with progress, and a sentence editor for post-generation editing.
+VibeVoice — an AI audiobook generation platform powered by Qwen3-TTS models. Three modes: preset voice synthesis (9 speakers + emotion control), voice cloning (from reference audio), and voice design (natural language voice description). Includes a voice library for saving/reusing cloned voices, sentence-by-sentence generation with progress, and a sentence editor for post-generation editing.
 
 ## Commands
 

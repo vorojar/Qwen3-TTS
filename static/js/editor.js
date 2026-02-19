@@ -259,8 +259,7 @@ function showSentenceEditorView() {
             <span class="sentence-editor-index">${index + 1}</span>
             <div style="flex:1;min-width:0">
                 <span class="sentence-editor-text" id="sent-text-${index}">${escapeHtml(text)}</span>
-                ${voiceTag}
-                ${instructTag}
+                ${voiceTag || instructTag ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${voiceTag}${instructTag}</div>` : ""}
             </div>
             ${actionsHtml}
         </li>`;

@@ -1,8 +1,8 @@
-# Qwen3-TTS 语音合成服务
+# VibeVoice
 
 [English](README_EN.md)
 
-基于阿里巴巴 Qwen3-TTS 模型的语音合成 Web 应用，支持预设说话人和语音克隆功能。
+AI 有声书生成平台，基于 Qwen3-TTS 模型，支持预设说话人、语音克隆、声音设计和逐句编辑。
 
 ![Demo](demo.png)
 
@@ -275,4 +275,4 @@ curl http://localhost:8000/languages
 
 ## 许可证
 
-本项目使用 Qwen3-TTS 模型，模型许可证请参考 [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS)。
+VibeVoice 使用 Qwen3-TTS 模型，模型许可证请参考 [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS)。

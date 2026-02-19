@@ -1,8 +1,8 @@
-# Qwen3-TTS API Server
+# VibeVoice
 
 [中文](README.md)
 
-A web application for Text-to-Speech powered by Alibaba's Qwen3-TTS model, featuring preset voices and voice cloning capabilities.
+An AI audiobook generation platform powered by Qwen3-TTS models, featuring preset voices, voice cloning, voice design, and sentence-by-sentence editing.
 
 ![Demo](demo_en.png)
 
@@ -275,4 +275,4 @@ curl http://localhost:8000/languages
 
 ## License
 
-This project uses the Qwen3-TTS model. Please refer to [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) for model license terms.
+VibeVoice uses Qwen3-TTS models. Please refer to [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) for model license terms.

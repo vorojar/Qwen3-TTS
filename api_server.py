@@ -42,7 +42,7 @@ def get_generation_stats(text: str, start_time: float, mode: str = "TTS") -> dic
         "avg_per_char": round(avg_per_char, 3),
     }
 
-app = FastAPI(title="Qwen3-TTS API", version="1.0.0")
+app = FastAPI(title="VibeVoice API", version="1.0.0")
 
 # 添加 CORS 支持，允许 Tauri 应用访问
 app.add_middleware(
@@ -260,7 +260,7 @@ async def root():
 @app.get("/api")
 async def api_info():
     return {
-        "service": "Qwen3-TTS API",
+        "service": "VibeVoice API",
         "version": "1.0.0",
         "endpoints": {
             "/tts": "文字转语音 - 预设说话人 (GET/POST)",
