@@ -102,26 +102,19 @@
                     ></textarea>
                     <!-- 生成进度视图 (生成时显示) -->
                     <div id="progress-view" class="hidden input-field flex-1 text-base" style="line-height:1.8;min-height:0"></div>
-                    <!-- 返回句子视图按钮 -->
-                    <div id="sentence-view-hint" class="hidden mt-2">
-                        <button onclick="showSentenceEditorView()" class="text-sm text-accent hover:text-accent-dark transition-colors" style="background:none;border:none;cursor:pointer">
-                            ← <span data-i18n="btn.sentenceView">返回句子视图</span>
-                        </button>
-                    </div>
-
                     <!-- 操作栏 -->
                     <div class="flex items-center justify-between mt-4">
                         <div id="status-message" class="text-sm text-charcoal/60"></div>
-                        <button id="generate-btn" onclick="generate()" class="btn-primary">
+                        <button id="generate-btn" onclick="enterPreviewMode()" class="btn-primary">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <polygon points="5 3 19 12 5 21 5 3"></polygon>
                             </svg>
-                            <span data-i18n="btn.generate">生成语音</span>
+                            <span data-i18n="btn.previewSentences">分句预览</span>
                         </button>
                         <!-- 句子视图工具栏（句子视图时替代生成按钮） -->
                         <div id="sentence-toolbar" class="hidden" style="display:none;align-items:center;gap:12px;width:100%">
-                            <button onclick="exitSentenceEditorView()" class="text-sm text-accent hover:text-accent-dark transition-colors" style="background:none;border:none;cursor:pointer">
-                                ← <span data-i18n="btn.backToText">返回编辑视图</span>
+                            <button onclick="clearAndRestart()" class="sentence-new-btn">
+                                ＋ <span data-i18n="btn.newProject">新建</span>
                             </button>
                             <div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:#718096">
                                 <span id="st-pace-label"></span>

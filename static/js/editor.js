@@ -133,40 +133,28 @@ function splitTextToSentences(text, minLength = 10) {
   return merged;
 }
 
-// 显示进度视图
-function showProgressView(sentences) {
-  const textInput = document.getElementById("text-input");
-  const progressView = document.getElementById("progress-view");
-
-  // 构建带样式的句子列表
-  let html = "";
-  sentences.forEach((sentence, index) => {
-    html += `<span id="sentence-${index}" class="sentence-pending">${escapeHtml(sentence)}</span>`;
-  });
-
-  progressView.innerHTML = html;
-  textInput.classList.add("hidden");
-  progressView.classList.remove("hidden");
-}
-
-// 更新句子进度样式
-function updateSentenceProgress(current) {
-  // current 是已完成的数量（1-based）
-  for (let i = 0; i < current; i++) {
-    const el = document.getElementById(`sentence-${i}`);
-    if (el) {
-      el.className = "sentence-done";
+// 更新生成进度（DOM操作，不重新渲染）
+function updateGeneratingProgress(current) {
+  generatingProgress = current;
+  const items = document.querySelectorAll(".sentence-editor-item");
+  items.forEach((el, i) => {
+    el.classList.remove("gen-done", "gen-current");
+    if (i < current) {
+      el.classList.add("gen-done");
+    } else if (i === current) {
+      el.classList.add("gen-current");
     }
-  }
-  // 标记正在生成的句子
-  const currentEl = document.getElementById(`sentence-${current}`);
-  if (currentEl) {
-    currentEl.className = "sentence-current";
+  });
+  // 滚动当前句子到可见区域
+  const currentItem = items[current];
+  if (currentItem) {
+    currentItem.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 }
 
 // 隐藏进度视图
 function hideProgressView() {
+  generatingProgress = -1;
   const textInput = document.getElementById("text-input");
   const progressView = document.getElementById("progress-view");
   textInput.classList.remove("hidden");
@@ -174,14 +162,12 @@ function hideProgressView() {
   progressView.style.flexDirection = "";
   progressView.style.overflow = "";
   progressView.classList.add("hidden");
-  // 如果有句子数据，显示"返回句子视图"按钮
-  const hint = document.getElementById("sentence-view-hint");
-  if (hint) {
-    hint.classList.toggle("hidden", sentenceAudios.length <= 1);
-  }
   updateCharCount();
-  // 恢复生成按钮，隐藏句子工具栏
-  document.getElementById("generate-btn").style.display = "";
+  // 恢复生成按钮（分句预览按钮），隐藏句子工具栏
+  const genBtn = document.getElementById("generate-btn");
+  genBtn.style.display = "";
+  genBtn.onclick = enterPreviewMode;
+  genBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.previewSentences")}</span>`;
   const toolbar = document.getElementById("sentence-toolbar");
   toolbar.style.display = "none";
   toolbar.classList.add("hidden");
@@ -193,42 +179,78 @@ let selectedSentenceIndex = -1;
 function showSentenceEditorView() {
   const textInput = document.getElementById("text-input");
   const progressView = document.getElementById("progress-view");
+  const generating = isGenerating;
+  const previewing = isPreviewing;
 
   // 找出最近一次撤销对应的句子索引
   const lastUndoIndex =
     undoStack.length > 0 ? undoStack[undoStack.length - 1].index : -1;
 
+  // 判断是否为 preset 模式（预编辑时用 currentMode，生成后用 lastGenerateParams）
+  const isPreset = previewing
+    ? currentMode === "preset"
+    : lastGenerateParams && lastGenerateParams.mode === "preset";
+
   let html =
-    '<div style="flex:1;min-height:0;overflow-y:auto" class="scrollbar-thin"><ul class="sentence-editor-list">';
-  // 第一句前面的插入按钮
-  html += `<li class="sentence-insert-row"><button class="sentence-insert-btn" onclick="event.stopPropagation(); showInsertForm(0)" title="${t("btn.addSentence")}">＋</button></li>`;
+    `<div style="flex:1;min-height:0;overflow-y:auto" class="scrollbar-thin"><ul class="sentence-editor-list${generating ? " generating" : ""}${previewing ? " previewing" : ""}">`;
+  // 插入按钮（仅非生成模式）
+  if (!generating) {
+    html += `<li class="sentence-insert-row"><button class="sentence-insert-btn" onclick="event.stopPropagation(); showInsertForm(0)" title="${t("btn.addSentence")}">＋</button></li>`;
+  }
   sentenceTexts.forEach((text, index) => {
-    const isSelected = index === selectedSentenceIndex;
-    const isPreviewPlaying = sentencePreviewIndex === index;
-    const hasUndo = index === lastUndoIndex;
+    const isSelected = !generating && index === selectedSentenceIndex;
+    const isPreviewPlaying = !generating && !previewing && sentencePreviewIndex === index;
+    const hasUndo = !generating && !previewing && index === lastUndoIndex;
     const instruct = sentenceInstructs[index] || "";
-    const isPreset = lastGenerateParams && lastGenerateParams.mode === "preset";
-    const instructTag = isPreset
+
+    // 生成中的进度 CSS 类
+    let genClass = "";
+    if (generating) {
+      if (index < generatingProgress) genClass = "gen-done";
+      else if (index === generatingProgress) genClass = "gen-current";
+    }
+
+    // 情感标签：预编辑和生成后都显示（preset模式下）
+    const instructTag = !generating && isPreset
       ? `<div class="sentence-instruct-tag" id="sent-instruct-${index}" onclick="event.stopPropagation(); editSentenceInstruct(${index})"><span class="sentence-instruct-label">${t("label.instructLabel")}:</span> <span class="sentence-instruct-value">${instruct ? escapeHtml(instruct) : t("label.instructEmpty")}</span> <span class="sentence-instruct-edit">✏</span></div>`
       : "";
-    html += `<li class="sentence-editor-item ${isSelected ? "selected" : ""}"
+
+    let actionsHtml = "";
+    if (generating) {
+      actionsHtml = "";
+    } else if (previewing) {
+      // 预编辑模式：只有删除按钮（无音频，不能试听/重新生成）
+      actionsHtml = `<span class="sentence-editor-actions">
+                <button class="sentence-del-btn" onclick="event.stopPropagation(); deleteSentence(${index})" title="删除">✕</button>
+            </span>`;
+    } else {
+      // 生成后完整操作按钮
+      actionsHtml = `<span class="sentence-editor-actions">
+                ${hasUndo ? '<button class="sentence-regen-btn" onclick="event.stopPropagation(); undoRegenerate()" title="' + t("btn.undo") + '" style="border-color:#f6ad55;color:#dd6b20">↩</button>' : ""}
+                <button class="sentence-play-btn ${isPreviewPlaying ? "playing-now" : ""}" onclick="event.stopPropagation(); previewSentenceAudio(${index})" title="试听">${isPreviewPlaying ? "⏸" : "▶"}</button>
+                <button class="sentence-regen-btn" onclick="event.stopPropagation(); regenerateSentence(${index})">${t("btn.regenerate")}</button>
+                <button class="sentence-del-btn" onclick="event.stopPropagation(); deleteSentence(${index})" title="删除">✕</button>
+            </span>`;
+    }
+
+    const interactAttrs = generating
+      ? ""
+      : `onclick="selectSentenceItem(${index}, event)" ondblclick="editSentenceItem(${index})"`;
+
+    html += `<li class="sentence-editor-item ${isSelected ? "selected" : ""} ${genClass}"
             id="sent-item-${index}"
-            onclick="selectSentenceItem(${index}, event)"
-            ondblclick="editSentenceItem(${index})">
+            ${interactAttrs}>
             <span class="sentence-editor-index">${index + 1}</span>
             <div style="flex:1;min-width:0">
                 <span class="sentence-editor-text" id="sent-text-${index}">${escapeHtml(text)}</span>
                 ${instructTag}
             </div>
-            <span class="sentence-editor-actions">
-                ${hasUndo ? '<button class="sentence-regen-btn" onclick="event.stopPropagation(); undoRegenerate()" title="' + t("btn.undo") + '" style="border-color:#f6ad55;color:#dd6b20">↩</button>' : ""}
-                <button class="sentence-play-btn ${isPreviewPlaying ? "playing-now" : ""}" onclick="event.stopPropagation(); previewSentenceAudio(${index})" title="试听">${isPreviewPlaying ? "⏸" : "▶"}</button>
-                <button class="sentence-regen-btn" onclick="event.stopPropagation(); regenerateSentence(${index})">${t("btn.regenerate")}</button>
-                <button class="sentence-del-btn" onclick="event.stopPropagation(); deleteSentence(${index})" title="删除">✕</button>
-            </span>
+            ${actionsHtml}
         </li>`;
-    // 插入按钮（每句之后）
-    html += `<li class="sentence-insert-row"><button class="sentence-insert-btn" onclick="event.stopPropagation(); showInsertForm(${index + 1})" title="${t("btn.addSentence")}">＋</button></li>`;
+    // 插入按钮（仅非生成模式）
+    if (!generating) {
+      html += `<li class="sentence-insert-row"><button class="sentence-insert-btn" onclick="event.stopPropagation(); showInsertForm(${index + 1})" title="${t("btn.addSentence")}">＋</button></li>`;
+    }
   });
   html += "</ul></div>";
 
@@ -238,30 +260,70 @@ function showSentenceEditorView() {
   progressView.style.flexDirection = "column";
   progressView.style.overflow = "hidden";
   progressView.classList.remove("hidden");
-  // 隐藏"返回句子视图"提示
-  const hint = document.getElementById("sentence-view-hint");
-  if (hint) hint.classList.add("hidden");
-  // 隐藏生成按钮，显示句子工具栏
-  document.getElementById("generate-btn").style.display = "none";
-  const toolbar = document.getElementById("sentence-toolbar");
-  toolbar.classList.remove("hidden");
-  toolbar.style.display = "flex";
-  // 同步停顿控件值
-  document.getElementById("st-pace-label").textContent = t("label.pace");
-  document.getElementById("st-pace-value").textContent =
-    pausePaceMultiplier === 0
-      ? t("label.paceOff")
-      : pausePaceMultiplier.toFixed(1) + "x";
-  document.getElementById("st-pace-range").value = pausePaceMultiplier;
+
+  if (generating) {
+    // 生成中：不触碰生成按钮（generation.js 已将其改为停止按钮），不显示句子工具栏
+    const toolbar = document.getElementById("sentence-toolbar");
+    toolbar.style.display = "none";
+    toolbar.classList.add("hidden");
+  } else if (previewing) {
+    // 预编辑模式：显示"生成语音"按钮和"返回编辑"按钮
+    const btn = document.getElementById("generate-btn");
+    btn.style.display = "";
+    btn.disabled = false;
+    btn.onclick = generate;
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.startGenerate")}</span>`;
+    // 显示"返回编辑"在状态消息区
+    document.getElementById("status-message").innerHTML =
+      `<button onclick="exitPreviewMode()" style="background:none;border:none;cursor:pointer;color:#E07A5F;font-size:13px">← ${t("btn.backToInput")}</button>`;
+    // 不显示句子工具栏（无音频，停顿控件无意义）
+    const toolbar = document.getElementById("sentence-toolbar");
+    toolbar.style.display = "none";
+    toolbar.classList.add("hidden");
+  } else {
+    // 生成后：清除状态消息，隐藏生成按钮，显示句子工具栏
+    document.getElementById("status-message").textContent = "";
+    document.getElementById("generate-btn").style.display = "none";
+    const toolbar = document.getElementById("sentence-toolbar");
+    toolbar.classList.remove("hidden");
+    toolbar.style.display = "flex";
+    // 同步停顿控件值
+    document.getElementById("st-pace-label").textContent = t("label.pace");
+    document.getElementById("st-pace-value").textContent =
+      pausePaceMultiplier === 0
+        ? t("label.paceOff")
+        : pausePaceMultiplier.toFixed(1) + "x";
+    document.getElementById("st-pace-range").value = pausePaceMultiplier;
+  }
 }
 
-function exitSentenceEditorView() {
+function clearAndRestart() {
+  if (!confirm(t("confirm.newProject"))) return;
   finishEditing();
+  // 清空所有状态
+  sentenceAudios = [];
+  sentenceTexts = [];
+  sentenceInstructs = [];
+  decodedPcmCache = [];
+  currentSubtitles = null;
+  lastGenerateParams = null;
+  clonePromptId = null;
   selectedSentenceIndex = -1;
-  // 同步句子文本回 textarea
-  if (sentenceTexts.length > 0) {
-    document.getElementById("text-input").value = sentenceTexts.join("");
+  undoStack = [];
+  sentencePreviewIndex = -1;
+  lastStatsData = null;
+  isPreviewing = false;
+  if (_sentencePreviewEndHandler) {
+    audioElement.removeEventListener("timeupdate", _sentencePreviewEndHandler);
+    _sentencePreviewEndHandler = null;
   }
+  // 清空 textarea
+  document.getElementById("text-input").value = "";
+  // 隐藏播放器
+  document.getElementById("player-section").classList.add("hidden");
+  // 清除持久化
+  clearSession();
+  // 回到 textarea 视图
   hideProgressView();
 }
 
@@ -422,12 +484,24 @@ function undoRegenerate() {
 
 // ===== 删除句子 =====
 function deleteSentence(index) {
-  if (sentenceTexts.length <= 1) return; // 至少保留一句
+  if (sentenceTexts.length <= 1) {
+    // 预编辑模式下只剩一句，退出预览
+    if (isPreviewing) exitPreviewMode();
+    return;
+  }
   if (!confirm(t("confirm.deleteSentence"))) return;
   finishEditing();
-  sentenceAudios.splice(index, 1);
   sentenceTexts.splice(index, 1);
   sentenceInstructs.splice(index, 1);
+  if (isPreviewing) {
+    // 预编辑模式：无音频，跳过 rebuildAudioAndSubtitles
+    if (selectedSentenceIndex >= sentenceTexts.length)
+      selectedSentenceIndex = sentenceTexts.length - 1;
+    if (selectedSentenceIndex === index) selectedSentenceIndex = -1;
+    showSentenceEditorView();
+    return;
+  }
+  sentenceAudios.splice(index, 1);
   decodedPcmCache = [];
   rebuildAudioAndSubtitles();
   saveSession(); // 持久化
@@ -440,7 +514,7 @@ function deleteSentence(index) {
 
 // ===== 插入句子 =====
 function showInsertForm(afterIndex) {
-  if (!lastGenerateParams) return;
+  if (!isPreviewing && !lastGenerateParams) return;
   finishEditing();
   // 取消已有的插入表单
   const existing = document.querySelector(".insert-form-row");
@@ -449,8 +523,12 @@ function showInsertForm(afterIndex) {
   const editorList = document.querySelector(".sentence-editor-list");
   if (!editorList) return;
 
-  const isPreset = lastGenerateParams.mode === "preset";
-  const defaultInstruct = lastGenerateParams.instruct || "";
+  const isPreset = isPreviewing
+    ? currentMode === "preset"
+    : lastGenerateParams && lastGenerateParams.mode === "preset";
+  const defaultInstruct = isPreviewing
+    ? (document.getElementById("instruct")?.value?.trim() || "")
+    : (lastGenerateParams?.instruct || "");
   const instructRow = isPreset
     ? `<div style="display:flex;align-items:center;gap:6px">
         <span style="font-size:11px;color:#A0AEC0;white-space:nowrap">${t("label.instructLabel")}:</span>
@@ -505,9 +583,19 @@ async function confirmInsert(afterIndex) {
   const newText = textInput ? textInput.value.trim() : "";
   const newInstruct = instructInput
     ? instructInput.value.trim()
-    : lastGenerateParams.instruct || "";
+    : (lastGenerateParams?.instruct || "");
   if (!newText) {
     textInput && textInput.focus();
+    return;
+  }
+
+  // 预编辑模式：纯文本插入，不调 API
+  if (isPreviewing) {
+    cancelInsertForm();
+    sentenceTexts.splice(afterIndex, 0, newText);
+    sentenceInstructs.splice(afterIndex, 0, newInstruct);
+    selectedSentenceIndex = afterIndex;
+    showSentenceEditorView();
     return;
   }
 
@@ -595,6 +683,44 @@ async function confirmInsert(afterIndex) {
     btn.innerHTML = originalBtnHtml;
     btn.onclick = originalBtnOnclick;
   }
+}
+
+// ===== 分句预览模式 =====
+function enterPreviewMode() {
+  const text = document.getElementById("text-input").value.trim();
+  if (!text) {
+    document.getElementById("status-message").textContent = t("status.enterText");
+    return;
+  }
+  sentenceTexts = splitTextToSentences(text);
+  const instruct = document.getElementById("instruct")?.value?.trim() || "";
+  sentenceInstructs = sentenceTexts.map(() =>
+    currentMode === "preset" ? instruct : ""
+  );
+  sentenceAudios = [];
+  isPreviewing = true;
+  selectedSentenceIndex = -1;
+  showSentenceEditorView();
+}
+
+function exitPreviewMode() {
+  // 同步文本回 textarea
+  finishEditing();
+  if (sentenceTexts.length > 0) {
+    document.getElementById("text-input").value = sentenceTexts.join("");
+  }
+  isPreviewing = false;
+  sentenceTexts = [];
+  sentenceInstructs = [];
+  hideProgressView();
+  // 恢复按钮为"分句预览"
+  resetToPreviewButton();
+}
+
+function resetToPreviewButton() {
+  const btn = document.getElementById("generate-btn");
+  btn.onclick = enterPreviewMode;
+  btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.previewSentences")}</span>`;
 }
 
 // HTML 转义

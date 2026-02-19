@@ -107,20 +107,6 @@ textarea.input-field {
   font-size: 16px;
 }
 
-/* 句子进度样式 */
-.sentence-pending {
-  color: #2d3748;
-}
-.sentence-current {
-  color: #e07a5f;
-  background: #fef3e2;
-  padding: 2px 4px;
-  border-radius: 4px;
-}
-.sentence-done {
-  color: #a0aec0;
-}
-
 /* 播放高亮 */
 .sentence-editor-item.playing {
   background: #fef3e2;
@@ -442,6 +428,43 @@ select.input-field {
 .sentence-editor-list.inserting > li:not(.inserting-row) {
   pointer-events: none;
   opacity: 0.5;
+}
+
+/* 新建按钮 */
+.sentence-new-btn {
+  padding: 4px 12px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid #e2ded6;
+  background: white;
+  color: #4a5568;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.sentence-new-btn:hover {
+  border-color: #e07a5f;
+  color: #e07a5f;
+}
+
+/* 预编辑模式：删除按钮始终可见 */
+.sentence-editor-list.previewing .sentence-editor-actions {
+  opacity: 1;
+}
+
+/* 生成中的句子编辑器 */
+.sentence-editor-list.generating .sentence-editor-item {
+  cursor: default;
+}
+.sentence-editor-list.generating .sentence-editor-item:hover {
+  background: transparent;
+}
+.sentence-editor-item.gen-done {
+  opacity: 0.5;
+}
+.sentence-editor-item.gen-current {
+  background: #fef3e2;
+  border-color: #e07a5f;
 }
 
 /* 录音动画 */

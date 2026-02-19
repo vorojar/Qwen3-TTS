@@ -11,6 +11,8 @@ function stopGeneration() {
     currentEventSource = null;
   }
   isGenerating = false;
+  isPreviewing = false;
+  generatingProgress = -1;
   currentSubtitles = null;
   sentenceAudios = [];
   sentenceTexts = [];
@@ -32,8 +34,8 @@ function stopGeneration() {
   const btn = document.getElementById("generate-btn");
   const statusEl = document.getElementById("status-message");
   btn.disabled = false;
-  btn.onclick = generate;
-  btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.generate")}</span>`;
+  btn.onclick = enterPreviewMode;
+  btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.previewSentences")}</span>`;
   statusEl.innerHTML = `<span class="text-yellow-600">${t("status.stopped")}</span>`;
   updateCharCount();
 }
@@ -139,8 +141,9 @@ async function generateWithProgress(url, btn, statusEl) {
 
   // 获取文本并分句显示
   const text = document.getElementById("text-input").value.trim();
-  const sentences = splitTextToSentences(text);
-  showProgressView(sentences);
+  sentenceTexts = splitTextToSentences(text);
+  generatingProgress = 0;
+  showSentenceEditorView();
 
   return new Promise((resolve, reject) => {
     const eventSource = new EventSource(url);
@@ -159,7 +162,7 @@ async function generateWithProgress(url, btn, statusEl) {
           btn.disabled = false;
           btn.onclick = stopGeneration;
           // 标记第一句正在生成
-          updateSentenceProgress(0);
+          updateGeneratingProgress(0);
         }
 
         if (data.progress) {
@@ -167,7 +170,7 @@ async function generateWithProgress(url, btn, statusEl) {
           btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${current}/${total} ${t("stats.sentences")} (${percent}%)</span>`;
           statusEl.textContent = `${t("status.generating")} ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
           // 更新句子样式
-          updateSentenceProgress(current);
+          updateGeneratingProgress(current);
         }
 
         if (data.done) {
@@ -191,13 +194,9 @@ async function generateWithProgress(url, btn, statusEl) {
           }
           saveSession(); // 持久化
 
-          // 显示句子编辑视图（而非隐藏进度）
-          if (sentenceTexts.length > 1) {
-            selectedSentenceIndex = -1;
-            showSentenceEditorView();
-          } else {
-            hideProgressView();
-          }
+          // 始终显示句子编辑视图
+          selectedSentenceIndex = -1;
+          showSentenceEditorView();
 
           // 将 base64 转为 blob URL
           const binaryString = atob(data.audio);
@@ -209,7 +208,7 @@ async function generateWithProgress(url, btn, statusEl) {
           const audioUrl = URL.createObjectURL(blob);
 
           // 恢复按钮
-          btn.onclick = generate;
+          btn.onclick = enterPreviewMode;
           resolve({
             audioUrl,
             stats: data.stats,
@@ -221,7 +220,7 @@ async function generateWithProgress(url, btn, statusEl) {
           currentEventSource = null;
           isGenerating = false;
           hideProgressView();
-          btn.onclick = generate;
+          btn.onclick = enterPreviewMode;
           reject(new Error(data.error));
         }
       } catch (e) {
@@ -234,14 +233,14 @@ async function generateWithProgress(url, btn, statusEl) {
       currentEventSource = null;
       isGenerating = false;
       hideProgressView();
-      btn.onclick = generate;
+      btn.onclick = enterPreviewMode;
       reject(new Error(t("status.failed")));
     };
   }).catch((error) => {
     hideProgressView();
     statusEl.innerHTML = `<span class="text-red-600">${t("status.failed")}: ${error.message}</span>`;
     btn.disabled = false;
-    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.generate")}</span>`;
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.previewSentences")}</span>`;
     return null;
   });
 }
@@ -250,8 +249,9 @@ async function generateWithProgress(url, btn, statusEl) {
 async function generateWithProgressPost(url, formData, btn, statusEl) {
   isGenerating = true;
   const text = document.getElementById("text-input").value.trim();
-  const sentences = splitTextToSentences(text);
-  showProgressView(sentences);
+  sentenceTexts = splitTextToSentences(text);
+  generatingProgress = 0;
+  showSentenceEditorView();
 
   try {
     const response = await fetch(url, { method: "POST", body: formData });
@@ -283,13 +283,13 @@ async function generateWithProgressPost(url, formData, btn, statusEl) {
             const data = JSON.parse(line.slice(6));
             if (data.started) {
               statusEl.textContent = `${t("status.generating")} 0/${data.total} ${t("stats.sentences")} (0%)`;
-              updateSentenceProgress(0);
+              updateGeneratingProgress(0);
             }
             if (data.progress) {
               const { current, total, percent } = data.progress;
               btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${current}/${total} ${t("stats.sentences")} (${percent}%)</span>`;
               statusEl.textContent = `${t("status.generating")} ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
-              updateSentenceProgress(current);
+              updateGeneratingProgress(current);
             }
             if (data.done) {
               currentSubtitles = data.subtitles || null;
@@ -327,27 +327,28 @@ async function generateWithProgressPost(url, formData, btn, statusEl) {
     }
 
     isGenerating = false;
-    // 显示句子编辑视图（而非隐藏进度）
-    if (sentenceTexts.length > 1) {
-      selectedSentenceIndex = -1;
-      showSentenceEditorView();
-    } else {
-      hideProgressView();
-    }
-    btn.onclick = generate;
+    // 始终显示句子编辑视图
+    selectedSentenceIndex = -1;
+    showSentenceEditorView();
+    btn.onclick = enterPreviewMode;
     return result;
   } catch (error) {
     isGenerating = false;
     hideProgressView();
-    btn.onclick = generate;
+    btn.onclick = enterPreviewMode;
     statusEl.innerHTML = `<span class="text-red-600">${t("status.failed")}: ${error.message}</span>`;
     btn.disabled = false;
-    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.generate")}</span>`;
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.previewSentences")}</span>`;
     return null;
   }
 }
 
 async function generate() {
+  // 从预编辑模式启动生成
+  if (isPreviewing) {
+    return generateFromPreview();
+  }
+
   const text = document.getElementById("text-input").value.trim();
   const btn = document.getElementById("generate-btn");
   const statusEl = document.getElementById("status-message");
@@ -390,15 +391,13 @@ async function generate() {
   clonePromptId = null;
   undoStack = [];
   clearSession(); // 清除持久化
-  const hintEl = document.getElementById("sentence-view-hint");
-  if (hintEl) hintEl.classList.add("hidden");
 
   // 确保模型加载
   const modelType = currentMode === "preset" ? "custom" : currentMode;
   const modelReady = await ensureModelLoaded(modelType);
   if (!modelReady) {
     btn.disabled = false;
-    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.generate")}</span>`;
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.previewSentences")}</span>`;
     return;
   }
 
@@ -442,11 +441,13 @@ async function generate() {
         renderStats();
       }
 
-      statusEl.innerHTML = `<span class="text-green-600">${t("status.success")}</span>`;
+      if (sentenceTexts.length <= 1) {
+        statusEl.innerHTML = `<span class="text-green-600">${t("status.success")}</span>`;
+      }
       document.getElementById("save-voice-section").classList.add("hidden");
 
       btn.disabled = false;
-      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.generate")}</span>`;
+      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.previewSentences")}</span>`;
       return;
     } else if (currentMode === "clone") {
       const language = document.getElementById("language-clone").value;
@@ -482,11 +483,13 @@ async function generate() {
           renderStats();
         }
 
-        statusEl.innerHTML = `<span class="text-green-600">${t("status.success")}</span>`;
+        if (sentenceTexts.length <= 1) {
+          statusEl.innerHTML = `<span class="text-green-600">${t("status.success")}</span>`;
+        }
         document.getElementById("save-voice-section").classList.add("hidden");
 
         btn.disabled = false;
-        btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.generate")}</span>`;
+        btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.previewSentences")}</span>`;
         return;
       } else {
         lastGenerateParams = { mode: "clone", language, clone_prompt_id: null };
@@ -521,13 +524,15 @@ async function generate() {
           renderStats();
         }
 
-        statusEl.innerHTML = `<span class="text-green-600">${t("status.success")}</span>`;
+        if (sentenceTexts.length <= 1) {
+          statusEl.innerHTML = `<span class="text-green-600">${t("status.success")}</span>`;
+        }
         document
           .getElementById("save-voice-section")
           .classList.remove("hidden");
 
         btn.disabled = false;
-        btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.generate")}</span>`;
+        btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.previewSentences")}</span>`;
         return;
       }
     } else if (currentMode === "design") {
@@ -558,11 +563,13 @@ async function generate() {
         renderStats();
       }
 
-      statusEl.innerHTML = `<span class="text-green-600">${t("status.success")}</span>`;
+      if (sentenceTexts.length <= 1) {
+        statusEl.innerHTML = `<span class="text-green-600">${t("status.success")}</span>`;
+      }
       document.getElementById("save-voice-section").classList.add("hidden");
 
       btn.disabled = false;
-      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.generate")}</span>`;
+      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.previewSentences")}</span>`;
       return;
     }
 
@@ -607,8 +614,30 @@ async function generate() {
     statusEl.innerHTML = `<span class="text-red-600">${t("status.failed")}: ${error.message}</span>`;
   } finally {
     btn.disabled = false;
-    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.generate")}</span>`;
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.previewSentences")}</span>`;
   }
+}
+
+async function generateFromPreview() {
+  // 收集编辑后的句子文本，写回 textarea
+  finishEditing();
+  const editedTexts = [...sentenceTexts];
+  const editedInstructs = [...sentenceInstructs];
+  document.getElementById("text-input").value = editedTexts.join("");
+
+  // 退出预编辑状态，进入正常生成流程
+  isPreviewing = false;
+
+  // 调用原有 generate() 逻辑（isPreviewing 已置为 false，不会递归）
+  await generate();
+
+  // 生成完成后，尝试对齐 sentenceInstructs（后端可能重新分句导致数量不同）
+  if (sentenceTexts.length === editedInstructs.length) {
+    sentenceInstructs = editedInstructs;
+  }
+  // 数量不同则保留 generate() 里设的默认值
+
+  saveSession();
 }
 
 async function ensureModelLoaded(modelType) {

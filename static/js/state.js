@@ -19,8 +19,14 @@ let sentenceInstructs = []; // 每句情感指令（仅 preset 模式有意义�
 let lastGenerateParams = null; // {mode, speaker, language, instruct, voice_id, clone_prompt_id}
 let clonePromptId = null; // clone 模式的 session ID
 
+// 分句预览模式（无音频，纯文本编辑）
+let isPreviewing = false;
+
 // 撤销栈
 let undoStack = []; // [{index, audio, text}]
+
+// 生成进度
+let generatingProgress = -1; // 生成中：已完成句数（0-based index of current），非生成：-1
 
 // 单句试听
 let sentencePreviewIndex = -1;
@@ -160,10 +166,8 @@ async function restoreSession() {
     lastStatsData = session.statsData;
   }
   refreshStatsFromSentences();
-  // 显示播放器和句子视图
+  // 显示播放器和句子视图（始终进入句子编辑器）
   document.getElementById("player-section").classList.remove("hidden");
-  if (sentenceTexts.length > 1) {
-    selectedSentenceIndex = -1;
-    showSentenceEditorView();
-  }
+  selectedSentenceIndex = -1;
+  showSentenceEditorView();
 }

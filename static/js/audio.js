@@ -33,10 +33,25 @@ function initWavesurfer() {
   });
 }
 
+let _waveformLoading = false;
+let _waveformLoadQueued = false;
+
 function loadWaveform() {
   if (!audioElement.src) return;
   if (!wavesurfer) initWavesurfer();
-  wavesurfer.load(audioElement.src);
+  if (_waveformLoading) {
+    _waveformLoadQueued = true;
+    return;
+  }
+  _waveformLoading = true;
+  _waveformLoadQueued = false;
+  wavesurfer.load(audioElement.src).catch(() => {}).finally(() => {
+    _waveformLoading = false;
+    if (_waveformLoadQueued) {
+      _waveformLoadQueued = false;
+      loadWaveform();
+    }
+  });
 }
 
 function updateWaveformRegions() {
