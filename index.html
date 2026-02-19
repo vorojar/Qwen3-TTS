@@ -331,7 +331,7 @@
                             <span class="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">GET</span>
                             <code class="text-sm">/tts</code>
                         </div>
-                        <pre class="bg-charcoal rounded-lg p-4 overflow-x-auto text-sm text-green-400"><code>curl "http://localhost:8000/tts?text=你好世界&speaker=vivian&language=Chinese" -o output.wav</code></pre>
+                        <pre class="bg-charcoal rounded-lg p-4 overflow-x-auto text-sm text-green-400"><code>curl "http://localhost:8001/tts?text=你好世界&speaker=vivian&language=Chinese" -o output.wav</code></pre>
                     </div>
                 </div>
 
@@ -346,7 +346,7 @@
                             <span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">POST</span>
                             <code class="text-sm">/clone</code>
                         </div>
-                        <pre class="bg-charcoal rounded-lg p-4 overflow-x-auto text-sm text-green-400"><code>curl -X POST "http://localhost:8000/clone" \
+                        <pre class="bg-charcoal rounded-lg p-4 overflow-x-auto text-sm text-green-400"><code>curl -X POST "http://localhost:8001/clone" \
   -F "audio=@reference.wav" \
   -F "text=你好世界" \
   -F "language=Chinese" \
@@ -365,7 +365,7 @@
                             <span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">POST</span>
                             <code class="text-sm">/design</code>
                         </div>
-                        <pre class="bg-charcoal rounded-lg p-4 overflow-x-auto text-sm text-green-400"><code>curl -X POST "http://localhost:8000/design" \
+                        <pre class="bg-charcoal rounded-lg p-4 overflow-x-auto text-sm text-green-400"><code>curl -X POST "http://localhost:8001/design" \
   -F "text=你好世界" \
   -F "language=Chinese" \
   -F "instruct=低沉沙哑的中年男声" \
