@@ -234,13 +234,6 @@ function showSentenceEditorView() {
       ? `<div class="sentence-instruct-tag" id="sent-instruct-${index}" onclick="event.stopPropagation(); editSentenceInstruct(${index})"><span class="sentence-instruct-label">${t("label.instructLabel")}:</span> <span class="sentence-instruct-value">${instruct ? escapeHtml(instruct) : t("label.instructEmpty")}</span> <span class="sentence-instruct-edit">✏</span></div>`
       : "";
 
-    // 语速标签
-    const speedRate = sentenceSpeedRates[index] ?? 1.0;
-    const speedOverrideClass = speedRate !== 1.0 ? " speed-override" : "";
-    const speedTag = !generating
-      ? `<div class="sentence-speed-tag" id="sent-speed-${index}" onclick="event.stopPropagation(); editSentenceSpeed(${index})"><span class="sentence-speed-label">${t("label.speedLabel")}:</span> <span class="sentence-speed-value${speedOverrideClass}">${speedRate.toFixed(1)}x</span> <span class="sentence-speed-edit">✏</span></div>`
-      : "";
-
     let actionsHtml = "";
     if (generating) {
       actionsHtml = "";
@@ -269,7 +262,7 @@ function showSentenceEditorView() {
             <span class="sentence-editor-index">${index + 1}</span>
             <div style="flex:1;min-width:0">
                 <span class="sentence-editor-text" id="sent-text-${index}">${escapeHtml(text)}</span>
-                ${voiceTag || instructTag || speedTag ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${voiceTag}${instructTag}${speedTag}</div>` : ""}
+                ${voiceTag || instructTag ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${voiceTag}${instructTag}</div>` : ""}
             </div>
             ${actionsHtml}
         </li>`;
@@ -345,7 +338,6 @@ function clearAndRestart() {
   sentenceInstructs = [];
   sentenceVoiceConfigs = [];
   sentenceParagraphBreaks = [];
-  sentenceSpeedRates = [];
   decodedPcmCache = [];
   currentSubtitles = null;
   lastGenerateParams = null;
@@ -557,63 +549,6 @@ function finishVoiceEdit(index, selectEl) {
   setTimeout(() => showSentenceEditorView(), 0);
 }
 
-// ===== 逐句语速编辑 =====
-function editSentenceSpeed(index) {
-  const tag = document.getElementById(`sent-speed-${index}`);
-  if (!tag) return;
-  if (tag.querySelector("select")) return; // 已在编辑中
-
-  const currentRate = sentenceSpeedRates[index] ?? 1.0;
-  const options = [0.5, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.5, 2.0];
-  let optionsHtml = "";
-  for (const rate of options) {
-    const selected = Math.abs(rate - currentRate) < 0.01 ? " selected" : "";
-    const label = rate === 1.0 ? `1.0x (${t("label.speedDefault")})` : `${rate.toFixed(1)}x`;
-    optionsHtml += `<option value="${rate}"${selected}>${label}</option>`;
-  }
-
-  tag.innerHTML = `<select class="sentence-speed-select" onchange="finishSpeedEdit(${index}, this)" onblur="finishSpeedEdit(${index}, this)">${optionsHtml}</select>`;
-  const selectEl = tag.querySelector("select");
-  selectEl.focus();
-}
-
-async function finishSpeedEdit(index, selectEl) {
-  if (!selectEl.isConnected) return;
-  selectEl.onchange = null;
-  selectEl.onblur = null;
-  const newRate = parseFloat(selectEl.value);
-  const oldRate = sentenceSpeedRates[index] ?? 1.0;
-  sentenceSpeedRates[index] = newRate;
-
-  // 如果值改变了且有音频（非预览模式），调 /speed-adjust
-  // 用 newRate/oldRate 做相对变速，避免累积误差
-  if (Math.abs(newRate - oldRate) > 0.01 && !isPreviewing && sentenceAudios.length > 0 && sentenceAudios[index]) {
-    const statusEl = document.getElementById("status-message");
-    statusEl.textContent = t("status.generating");
-    try {
-      const relativeRate = newRate / oldRate;
-      const formData = new FormData();
-      formData.append("audio_base64", sentenceAudios[index]);
-      formData.append("speed_rate", relativeRate);
-      const response = await fetch("/speed-adjust", { method: "POST", body: formData });
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.detail || "Speed adjust failed");
-      }
-      const data = await response.json();
-      sentenceAudios[index] = data.audio;
-      decodedPcmCache = [];
-      rebuildAudioAndSubtitles();
-      statusEl.innerHTML = `<span class="text-green-600">${t("status.success")}</span>`;
-    } catch (error) {
-      statusEl.innerHTML = `<span class="text-red-600">${t("status.failed")}: ${error.message}</span>`;
-    }
-  }
-
-  saveSession();
-  showSentenceEditorView();
-}
-
 // ===== 单句试听 =====
 let _sentencePreviewEndHandler = null;
 
@@ -671,8 +606,6 @@ function undoRegenerate() {
     sentenceInstructs[last.index] = last.instruct;
   if (last.voiceConfig !== undefined)
     sentenceVoiceConfigs[last.index] = last.voiceConfig;
-  if (last.speedRate !== undefined)
-    sentenceSpeedRates[last.index] = last.speedRate;
   // 重新合并
   rebuildAudioAndSubtitles();
   saveSession(); // 持久化
@@ -699,7 +632,6 @@ function deleteSentence(index) {
   sentenceInstructs.splice(index, 1);
   sentenceVoiceConfigs.splice(index, 1);
   sentenceParagraphBreaks.splice(index, 1);
-  sentenceSpeedRates.splice(index, 1);
   if (isPreviewing) {
     // 预编辑模式：无音频，跳过 rebuildAudioAndSubtitles
     if (selectedSentenceIndex >= sentenceTexts.length)
@@ -803,7 +735,6 @@ async function confirmInsert(afterIndex) {
     sentenceInstructs.splice(afterIndex, 0, newInstruct);
     sentenceVoiceConfigs.splice(afterIndex, 0, null);
     sentenceParagraphBreaks.splice(afterIndex, 0, false); // 插入句子属于同段落
-    sentenceSpeedRates.splice(afterIndex, 0, 1.0);
     selectedSentenceIndex = afterIndex;
     showSentenceEditorView();
     return;
@@ -868,7 +799,6 @@ async function confirmInsert(afterIndex) {
     sentenceInstructs.splice(afterIndex, 0, newInstruct);
     sentenceVoiceConfigs.splice(afterIndex, 0, null);
     sentenceParagraphBreaks.splice(afterIndex, 0, false);
-    sentenceSpeedRates.splice(afterIndex, 0, 1.0);
     decodedPcmCache = [];
     rebuildAudioAndSubtitles();
     saveSession();
@@ -925,7 +855,6 @@ function enterPreviewMode() {
     currentMode === "preset" ? instruct : ""
   );
   sentenceVoiceConfigs = sentenceTexts.map(() => null);
-  sentenceSpeedRates = sentenceTexts.map(() => 1.0);
   sentenceAudios = [];
   isPreviewing = true;
   selectedSentenceIndex = -1;
@@ -953,7 +882,6 @@ function exitPreviewMode() {
   sentenceInstructs = [];
   sentenceVoiceConfigs = [];
   sentenceParagraphBreaks = [];
-  sentenceSpeedRates = [];
   hideProgressView();
   // 恢复操作栏布局
   const actionBar = document.getElementById("action-bar");
