@@ -12,23 +12,27 @@ AI 有声书生成平台，基于 Qwen3-TTS 模型，支持预设说话人、语
 
 ## 功能特性
 
-- **预设说话人**: 9 种内置声音，支持情感控制
-- **语音克隆**: 3秒以上参考音频即可克隆声音
-- **声音库**: 保存和管理克隆的声音，方便重复使用
-- **多语言**: 支持10种语言
-- **网页界面**: 支持浏览器录音的网页界面
+- **三种生成模式**: 预设说话人（9种声音+情感控制）、语音克隆、声音设计（自然语言描述）
+- **声音库**: 保存和管理克隆/设计的声音，方便重复使用
+- **句子编辑器**: 生成后逐句编辑、重新生成、删除、插入，支持逐句声音和情感配置
+- **分句预览**: 生成前预览分句结果，可调整文本、情感、声音后再生成
+- **项目管理**: 多项目多章节组织，左侧项目树导航
+- **智能分析**: LLM 自动识别角色和情感，一键分配声音
+- **多语言**: 支持10种语言，中英双语界面
 - **REST API**: 便于集成到您的应用
 
-## 增强功能
+## 详细功能
 
-1. **分句进度显示** - 长文本自动分句，逐句生成并实时显示进度，可视化查看当前生成到哪一句
+1. **分句进度显示** - 长文本自动分句，逐句生成并实时显示进度和耗时
 2. **停止生成** - 随时取消正在进行的生成，系统会在下一句边界停止
 3. **字幕生成** - 自动生成与音频时间同步的 SRT/VTT 字幕文件，适合视频制作
 4. **语言自动检测** - 根据输入文本自动识别语言（中/英/日/韩），并自动设置语言选择器
 5. **Voice Prompt 缓存** - 声音库条目的 voice prompt 缓存到磁盘，免去重复提取，大幅加速后续生成
 6. **MP3 导出** - 支持在浏览器中直接转换并下载 MP3 格式（除 WAV 外）
 7. **声音设计** - 通过自然语言描述创建自定义声音（如"低沉温暖的中年男声"），多句生成自动保持音色一致
-8. **句子编辑器** - 生成后可逐句选中、编辑文本、重新生成、删除或插入新句子，插入时有完整的进度反馈
+8. **逐句声音选择** - 每句可选择不同声音（预设/声音库），支持混合声音生成
+9. **逐句情感指令** - 每句可独立设置情感指令，不同于全局情感
+10. **智能角色分析** - 基于 Qwen3-4B 的角色/情感自动识别，一键分配声音到对话角色
 
 ## 支持的语言
 
@@ -91,11 +95,11 @@ modelscope download --model Qwen/Qwen3-TTS-0.6B --local_dir ./models/Qwen3-TTS-0
 python api_server.py
 ```
 
-服务运行在 http://localhost:8000
+服务运行在 http://localhost:8001
 
 ### 网页界面
 
-在浏览器中打开 http://localhost:8000 即可使用网页界面。
+在浏览器中打开 http://localhost:8001 即可使用网页界面。
 
 ---
 
@@ -146,10 +150,10 @@ pip install https://github.com/kingbri1/flash-attention/releases/download/v2.8.3
 
 ```bash
 # GET 请求
-curl "http://localhost:8000/tts?text=你好&speaker=vivian&language=Chinese" -o output.wav
+curl "http://localhost:8001/tts?text=你好&speaker=vivian&language=Chinese" -o output.wav
 
 # 带情感指令
-curl "http://localhost:8000/tts?text=你好&speaker=vivian&language=Chinese&instruct=用开心的语气说" -o output.wav
+curl "http://localhost:8001/tts?text=你好&speaker=vivian&language=Chinese&instruct=用开心的语气说" -o output.wav
 ```
 
 **参数:**
@@ -163,7 +167,7 @@ curl "http://localhost:8000/tts?text=你好&speaker=vivian&language=Chinese&inst
 ### 语音克隆
 
 ```bash
-curl -X POST "http://localhost:8000/clone" \
+curl -X POST "http://localhost:8001/clone" \
   -F "audio=@reference.wav" \
   -F "text=你好世界" \
   -F "language=Chinese" \
@@ -183,31 +187,31 @@ curl -X POST "http://localhost:8000/clone" \
 
 ```bash
 # 获取已保存的声音
-curl http://localhost:8000/voices
+curl http://localhost:8001/voices
 
 # 保存声音
-curl -X POST "http://localhost:8000/voices/save" \
+curl -X POST "http://localhost:8001/voices/save" \
   -F "name=我的声音" \
   -F "language=Chinese" \
   -F "audio=@reference.wav"
 
 # 使用已保存的声音
-curl -X POST "http://localhost:8000/voices/{voice_id}/tts" \
+curl -X POST "http://localhost:8001/voices/{voice_id}/tts" \
   -F "text=你好世界" \
   -o output.wav
 
 # 删除声音
-curl -X DELETE "http://localhost:8000/voices/{voice_id}"
+curl -X DELETE "http://localhost:8001/voices/{voice_id}"
 ```
 
 ### 其他接口
 
 ```bash
 # 获取可用说话人
-curl http://localhost:8000/speakers
+curl http://localhost:8001/speakers
 
 # 获取支持的语言
-curl http://localhost:8000/languages
+curl http://localhost:8001/languages
 ```
 
 ---
@@ -215,16 +219,57 @@ curl http://localhost:8000/languages
 ## 项目结构
 
 ```
-├── api_server.py      # FastAPI 服务端
-├── index.html         # 网页界面
-├── test_qwen_tts.py   # 测试脚本
-├── models/            # 模型文件（不在仓库中）
-└── saved_voices/      # 保存的克隆声音
+├── api_server.py          # FastAPI 服务端
+├── index.html             # 网页界面（HTML 外壳）
+├── static/
+│   ├── style.css          # 样式
+│   └── js/
+│       ├── i18n.js        # 中英双语翻译
+│       ├── state.js       # 全局状态 + IndexedDB 项目/章节持久化
+│       ├── audio.js       # 波形播放器、WAV/MP3 编解码、音频合并
+│       ├── editor.js      # 句子编辑器、分句预览、模式切换
+│       ├── voice.js       # 声音库 UI、录音、设计声音
+│       ├── generation.js  # 生成调度、SSE 进度、重新生成
+│       ├── shortcuts.js   # 键盘快捷键
+│       └── main.js        # 入口初始化
+├── test_qwen_tts.py       # 测试脚本
+├── models/                # 模型文件（不在仓库中）
+└── saved_voices/          # 保存的克隆声音
 ```
 
 ---
 
 ## 更新日志
+
+### v0.4.0 (2025-02-19)
+
+**分句预览模式**
+- 生成前可预览分句结果，编辑文本、调整情感指令、插入删除句子
+- "分句预览"→ 编辑 → "生成语音"三步流程，减少无效生成
+
+**逐句情感与声音配置**
+- 每句可独立设置情感指令（预设模式），不同于全局情感
+- 每句可选择不同声音（预设说话人/声音库），支持混合声音生成
+- 生成计时器：生成过程中实时显示耗时（100ms 刷新）
+
+**LLM 智能角色/情感分析**
+- 集成 Qwen3-4B 模型，自动识别文本中的角色和情感
+- 角色面板展示在句子编辑器顶部，支持一键分配声音到各角色
+- 分析结果自动填入逐句情感指令
+
+**项目/章节管理**
+- 左侧边栏项目树导航，支持多项目多章节组织
+- 项目级角色-声音映射共享，章节间复用
+- IndexedDB 持久化（从单会话迁移到多项目架构），自动迁移旧数据
+
+**声音设计独立模式**
+- 声音设计恢复为独立第三 tab（预设 | 声音库 | 设计）
+- 保留声音描述的自然语言表现力，不再降级为克隆 prompt
+
+**其他改进**
+- 段落边界保持：多段文本分句后保留换行结构
+- 生成统计显示在右上角状态栏
+- 键盘快捷键：Space 播放、方向键导航、Enter 重新生成、P 预览、Delete 删除、Ctrl+Z 撤销
 
 ### v0.3.0 (2025-02-18)
 

@@ -12,23 +12,27 @@ An AI audiobook generation platform powered by Qwen3-TTS models, featuring prese
 
 ## Features
 
-- **Preset Speakers**: 9 built-in voices with emotion control
-- **Voice Cloning**: Clone any voice from 3+ seconds of reference audio
-- **Voice Library**: Save and manage cloned voices for reuse
-- **Multilingual**: Support for 10 languages
-- **Web UI**: Browser-based interface with recording support
+- **Three Generation Modes**: Preset speakers (9 voices + emotion control), voice cloning, voice design (natural language description)
+- **Voice Library**: Save and manage cloned/designed voices for reuse
+- **Sentence Editor**: Post-generation per-sentence editing, regeneration, deletion, insertion with per-sentence voice and emotion config
+- **Sentence Preview**: Preview sentence splits before generation, adjust text, emotions, and voices
+- **Project Management**: Multi-project, multi-chapter organization with sidebar navigation
+- **Smart Analysis**: LLM-powered character and emotion recognition with one-click voice assignment
+- **Multilingual**: 10 languages supported, bilingual UI (Chinese/English)
 - **REST API**: Easy integration into your applications
 
-## Enhanced Features
+## Detailed Features
 
-1. **Sentence-by-Sentence Progress** - Long text is split into sentences and generated sequentially with real-time progress display, showing which sentence is currently being processed
+1. **Sentence-by-Sentence Progress** - Long text is split into sentences and generated sequentially with real-time progress and elapsed time display
 2. **Stop Generation** - Cancel ongoing generation at any time; the system stops at the next sentence boundary
 3. **Subtitle Generation** - Automatically generates SRT/VTT subtitle files synchronized with audio timing, perfect for video production
 4. **Auto Language Detection** - Automatically detects input language (Chinese/English/Japanese/Korean) and sets the language selector accordingly
 5. **Voice Prompt Caching** - Voice library entries cache their voice prompts to disk, eliminating repeated prompt extraction and significantly speeding up subsequent generations
 6. **MP3 Export** - Convert and download audio as MP3 directly in the browser (in addition to WAV)
 7. **Voice Design** - Create custom voices by describing characteristics in natural language (e.g., "deep male voice with a warm tone"), with automatic cross-sentence timbre consistency
-8. **Sentence Editor** - After generation, select, edit, regenerate, delete or insert sentences individually, with full progress feedback during insertion
+8. **Per-Sentence Voice Selection** - Each sentence can use a different voice (preset/library), enabling mixed-voice generation
+9. **Per-Sentence Emotion Instructions** - Each sentence can have its own emotion instruction, independent of the global setting
+10. **Smart Character Analysis** - Qwen3-4B powered character/emotion recognition, one-click voice assignment to dialogue characters
 
 ## Supported Languages
 
@@ -91,11 +95,11 @@ modelscope download --model Qwen/Qwen3-TTS-0.6B --local_dir ./models/Qwen3-TTS-0
 python api_server.py
 ```
 
-Server runs at http://localhost:8000
+Server runs at http://localhost:8001
 
 ### Web Interface
 
-Open http://localhost:8000 in your browser to access the web UI.
+Open http://localhost:8001 in your browser to access the web UI.
 
 ---
 
@@ -146,10 +150,10 @@ To achieve higher performance (e.g., the official benchmark of 97ms/char):
 
 ```bash
 # GET request
-curl "http://localhost:8000/tts?text=Hello&speaker=aiden&language=English" -o output.wav
+curl "http://localhost:8001/tts?text=Hello&speaker=aiden&language=English" -o output.wav
 
 # With emotion instruction
-curl "http://localhost:8000/tts?text=Hello&speaker=aiden&language=English&instruct=say it happily" -o output.wav
+curl "http://localhost:8001/tts?text=Hello&speaker=aiden&language=English&instruct=say it happily" -o output.wav
 ```
 
 **Parameters:**
@@ -163,7 +167,7 @@ curl "http://localhost:8000/tts?text=Hello&speaker=aiden&language=English&instru
 ### Voice Cloning
 
 ```bash
-curl -X POST "http://localhost:8000/clone" \
+curl -X POST "http://localhost:8001/clone" \
   -F "audio=@reference.wav" \
   -F "text=Hello world" \
   -F "language=English" \
@@ -183,31 +187,31 @@ curl -X POST "http://localhost:8000/clone" \
 
 ```bash
 # List saved voices
-curl http://localhost:8000/voices
+curl http://localhost:8001/voices
 
 # Save a voice
-curl -X POST "http://localhost:8000/voices/save" \
+curl -X POST "http://localhost:8001/voices/save" \
   -F "name=MyVoice" \
   -F "language=English" \
   -F "audio=@reference.wav"
 
 # Use saved voice
-curl -X POST "http://localhost:8000/voices/{voice_id}/tts" \
+curl -X POST "http://localhost:8001/voices/{voice_id}/tts" \
   -F "text=Hello world" \
   -o output.wav
 
 # Delete voice
-curl -X DELETE "http://localhost:8000/voices/{voice_id}"
+curl -X DELETE "http://localhost:8001/voices/{voice_id}"
 ```
 
 ### Other Endpoints
 
 ```bash
 # Get available speakers
-curl http://localhost:8000/speakers
+curl http://localhost:8001/speakers
 
 # Get supported languages
-curl http://localhost:8000/languages
+curl http://localhost:8001/languages
 ```
 
 ---
@@ -215,16 +219,57 @@ curl http://localhost:8000/languages
 ## Project Structure
 
 ```
-├── api_server.py      # FastAPI server
-├── index.html         # Web UI
-├── test_qwen_tts.py   # Test script
-├── models/            # Model files (not in repo)
-└── saved_voices/      # Saved cloned voices
+├── api_server.py          # FastAPI server
+├── index.html             # Web UI (HTML shell)
+├── static/
+│   ├── style.css          # Styles
+│   └── js/
+│       ├── i18n.js        # Chinese/English translations
+│       ├── state.js       # Global state + IndexedDB project/chapter persistence
+│       ├── audio.js       # Waveform player, WAV/MP3 encode/decode, audio merging
+│       ├── editor.js      # Sentence editor, sentence preview, mode switching
+│       ├── voice.js       # Voice library UI, recording, voice design
+│       ├── generation.js  # Generation dispatch, SSE progress, regeneration
+│       ├── shortcuts.js   # Keyboard shortcuts
+│       └── main.js        # Entry point initialization
+├── test_qwen_tts.py       # Test script
+├── models/                # Model files (not in repo)
+└── saved_voices/          # Saved cloned voices
 ```
 
 ---
 
 ## Changelog
+
+### v0.4.0 (2025-02-19)
+
+**Sentence Preview Mode**
+- Preview sentence splits before generation, edit text, adjust emotion instructions, insert/delete sentences
+- "Preview" → Edit → "Generate" three-step workflow, reducing wasted generations
+
+**Per-Sentence Emotion & Voice Configuration**
+- Each sentence can have its own emotion instruction (preset mode), independent of global emotion
+- Each sentence can use a different voice (preset speaker / voice library), enabling mixed-voice generation
+- Generation timer: real-time elapsed time display during generation (100ms refresh)
+
+**LLM Smart Character/Emotion Analysis**
+- Integrated Qwen3-4B model for automatic character and emotion recognition in text
+- Character panel at the top of sentence editor with one-click voice assignment per character
+- Analysis results auto-fill per-sentence emotion instructions
+
+**Project/Chapter Management**
+- Sidebar project tree navigation, multi-project multi-chapter organization
+- Project-level character-voice mapping shared across chapters
+- IndexedDB persistence (migrated from single-session to multi-project architecture), auto-migrates old data
+
+**Voice Design Independent Mode**
+- Voice design restored as independent 3rd tab (Preset | Library | Design)
+- Preserves natural language expressiveness of voice descriptions, no longer downgraded to clone prompt
+
+**Other Improvements**
+- Paragraph boundary preservation: multi-paragraph text retains line break structure after sentence splitting
+- Generation stats displayed in top-right status bar
+- Keyboard shortcuts: Space=play, arrows=navigate, Enter=regenerate, P=preview, Delete=delete, Ctrl+Z=undo
 
 ### v0.3.0 (2025-02-18)
 
