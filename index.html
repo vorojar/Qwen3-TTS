@@ -162,10 +162,7 @@
                         <span data-i18n="tab.preset">预设</span>
                     </button>
                     <button class="mode-tab" data-mode="clone" onclick="switchMode('clone')">
-                        <span data-i18n="tab.clone">克隆</span>
-                    </button>
-                    <button class="mode-tab" data-mode="design" onclick="switchMode('design')">
-                        <span data-i18n="tab.design">设计</span>
+                        <span data-i18n="tab.library">声音库</span>
                     </button>
                 </div>
 
@@ -287,29 +284,58 @@
                                 </div>
                             </div>
                         </details>
-                    </div>
 
-                    <!-- 声音设计配置 -->
-                    <div id="config-design" class="hidden space-y-4">
-                        <div>
-                            <label class="block text-sm text-charcoal/70 mb-2" data-i18n="config.language">语言</label>
-                            <select id="language-design" class="input-field">
-                                <option value="Chinese">中文</option>
-                                <option value="English">English</option>
-                                <option value="Japanese">日本語</option>
-                                <option value="Korean">한국어</option>
-                                <option value="German">Deutsch</option>
-                                <option value="French">Français</option>
-                                <option value="Russian">Русский</option>
-                                <option value="Portuguese">Português</option>
-                                <option value="Spanish">Español</option>
-                                <option value="Italian">Italiano</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm text-charcoal/70 mb-2" data-i18n="config.voiceDesc">声音描述 <span class="text-red-500">*</span></label>
-                            <textarea id="voice-desc" class="input-field h-24" data-i18n-placeholder="config.voiceDescPlaceholder" placeholder="描述你想要的声音，如：低沉沙哑的中年男声，语速较慢"></textarea>
-                        </div>
+                        <!-- 新建设计声音（折叠） -->
+                        <details id="design-new-section">
+                            <summary class="cursor-pointer text-sm font-medium text-charcoal/70 select-none py-1">
+                                ＋ <span data-i18n="design.newVoice">新建设计声音</span>
+                            </summary>
+                            <div class="space-y-4 mt-3">
+                                <div>
+                                    <label class="block text-sm text-charcoal/70 mb-2" data-i18n="config.voiceDesc">声音描述 <span class="text-red-500">*</span></label>
+                                    <textarea id="voice-desc" class="input-field h-20" data-i18n-placeholder="config.voiceDescPlaceholder" placeholder="描述你想要的声音，如：低沉沙哑的中年男声"></textarea>
+                                </div>
+                                <div>
+                                    <label class="block text-sm text-charcoal/70 mb-2" data-i18n="design.previewText">试听文本 <span class="text-red-500">*</span></label>
+                                    <textarea id="design-preview-text" class="input-field h-16" data-i18n-placeholder="design.previewTextPlaceholder" placeholder="输入一段话让声音朗读..."></textarea>
+                                </div>
+                                <div>
+                                    <label class="block text-sm text-charcoal/70 mb-2" data-i18n="config.language">语言</label>
+                                    <select id="language-design" class="input-field">
+                                        <option value="Chinese">中文</option>
+                                        <option value="English">English</option>
+                                        <option value="Japanese">日本語</option>
+                                        <option value="Korean">한국어</option>
+                                        <option value="German">Deutsch</option>
+                                        <option value="French">Français</option>
+                                        <option value="Russian">Русский</option>
+                                        <option value="Portuguese">Português</option>
+                                        <option value="Spanish">Español</option>
+                                        <option value="Italian">Italiano</option>
+                                    </select>
+                                </div>
+                                <!-- 预览按钮 -->
+                                <button id="design-preview-btn" onclick="previewDesignVoice()" class="w-full py-2.5 bg-cream-dark border border-warm-gray rounded-lg hover:bg-warm-gray transition-colors text-sm font-medium">
+                                    <span data-i18n="design.preview">生成预览</span>
+                                </button>
+                                <!-- 预览播放 -->
+                                <div id="design-preview-section" class="hidden p-3 bg-cream-dark rounded-lg">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-sm text-charcoal/70" data-i18n="config.preview">音频预览</span>
+                                        <button onclick="clearDesignPreview()" class="text-charcoal/50 hover:text-red-600 text-sm">✕</button>
+                                    </div>
+                                    <audio id="design-preview-audio" controls class="w-full mt-2 h-8"></audio>
+                                </div>
+                                <!-- 保存设计声音 -->
+                                <div id="design-save-section" class="hidden pt-4 border-t border-warm-gray">
+                                    <label class="block text-sm text-charcoal/70 mb-2" data-i18n="config.saveName">保存到声音库</label>
+                                    <div class="flex gap-2">
+                                        <input type="text" id="design-voice-name" class="input-field flex-1" data-i18n-placeholder="config.saveNamePlaceholder" placeholder="声音名称">
+                                        <button onclick="saveDesignVoice()" class="px-4 py-2 bg-cream-dark border border-warm-gray rounded-lg hover:bg-warm-gray transition-colors text-sm" data-i18n="btn.save">保存</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
                     </div>
 
                 </div>

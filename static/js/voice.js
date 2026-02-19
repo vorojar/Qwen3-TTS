@@ -212,3 +212,128 @@ function clearAudio() {
   document.getElementById("audio-file").value = "";
   document.getElementById("save-voice-section").classList.add("hidden");
 }
+
+// ===== 设计声音 =====
+let designPreviewAudioBase64 = null; // 保存预览音频的 base64 数据
+
+async function previewDesignVoice() {
+  const desc = document.getElementById("voice-desc").value.trim();
+  const text = document.getElementById("design-preview-text").value.trim();
+  const language = document.getElementById("language-design").value;
+
+  if (!desc) {
+    document.getElementById("status-message").textContent = t("status.needDesc");
+    return;
+  }
+  if (!text) {
+    document.getElementById("status-message").textContent = t("status.enterText");
+    return;
+  }
+
+  const btn = document.getElementById("design-preview-btn");
+  const statusEl = document.getElementById("status-message");
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle"></span> <span>${t("design.generating")}</span>`;
+
+  // 确保 design 模型加载
+  const modelReady = await ensureModelLoaded("design");
+  if (!modelReady) {
+    btn.disabled = false;
+    btn.innerHTML = `<span>${t("design.preview")}</span>`;
+    statusEl.innerHTML = `<span class="text-red-600">${t("status.failed")}</span>`;
+    return;
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append("text", text);
+    formData.append("language", language);
+    formData.append("instruct", desc);
+
+    const response = await fetch("/voices/design-preview", {
+      method: "POST",
+      body: formData,
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.detail || "Preview failed");
+    }
+    const data = await response.json();
+    designPreviewAudioBase64 = data.audio;
+
+    // 显示预览播放器
+    const binaryString = atob(data.audio);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: "audio/wav" });
+    document.getElementById("design-preview-audio").src = URL.createObjectURL(blob);
+    document.getElementById("design-preview-section").classList.remove("hidden");
+    document.getElementById("design-save-section").classList.remove("hidden");
+    statusEl.textContent = "";
+  } catch (error) {
+    statusEl.innerHTML = `<span class="text-red-600">${t("status.failed")}: ${error.message}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<span>${t("design.preview")}</span>`;
+  }
+}
+
+function clearDesignPreview() {
+  designPreviewAudioBase64 = null;
+  document.getElementById("design-preview-audio").src = "";
+  document.getElementById("design-preview-section").classList.add("hidden");
+  document.getElementById("design-save-section").classList.add("hidden");
+}
+
+async function saveDesignVoice() {
+  const name = document.getElementById("design-voice-name").value.trim();
+  if (!name) return;
+  if (!designPreviewAudioBase64) return;
+
+  const desc = document.getElementById("voice-desc").value.trim();
+  const text = document.getElementById("design-preview-text").value.trim();
+  const language = document.getElementById("language-design").value;
+
+  const statusEl = document.getElementById("status-message");
+  statusEl.textContent = t("status.saving");
+
+  try {
+    const formData = new FormData();
+    formData.append("name", name);
+    formData.append("language", language);
+    formData.append("instruct", desc);
+    formData.append("text", text);
+    formData.append("audio_base64", designPreviewAudioBase64);
+
+    const response = await fetch("/voices/design-save", {
+      method: "POST",
+      body: formData,
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.detail || "Save failed");
+    }
+    const result = await response.json();
+    statusEl.innerHTML = `<span class="text-green-600">${t("design.saveSuccess")}</span>`;
+
+    // 清理设计表单
+    document.getElementById("design-voice-name").value = "";
+    clearDesignPreview();
+    // 折叠设计区域
+    const details = document.getElementById("design-new-section");
+    if (details) details.removeAttribute("open");
+
+    // 刷新声音库并选中新声音
+    await loadSavedVoices();
+    if (result && result.voice_id) {
+      selectedVoiceId = result.voice_id;
+    } else if (savedVoices.length > 0) {
+      selectedVoiceId = savedVoices[savedVoices.length - 1].id;
+    }
+    renderVoiceList();
+  } catch (error) {
+    statusEl.innerHTML = `<span class="text-red-600">${t("status.failed")}: ${error.message}</span>`;
+  }
+}

@@ -10,9 +10,8 @@ function switchMode(mode) {
   // 显示/隐藏配置面板
   document.getElementById("config-preset").classList.toggle("hidden", mode !== "preset");
   document.getElementById("config-clone").classList.toggle("hidden", mode !== "clone");
-  document.getElementById("config-design").classList.toggle("hidden", mode !== "design");
 
-  // 切换到克隆时刷新声音库列表
+  // 切换到克隆/声音库时刷新声音库列表
   if (mode === "clone") {
     renderVoiceList();
   } else {
@@ -84,9 +83,13 @@ function detectAndSetLanguage(text) {
   else if (counts.zh > total * 0.3) lang = "Chinese";
   else if (counts.en > total * 0.5) lang = "English";
   if (lang) {
-    ["language-preset", "language-clone", "language-design"].forEach((id) => {
-      document.getElementById(id).value = lang;
+    ["language-preset", "language-clone"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.value = lang;
     });
+    // 设计声音的语言选择（在声音库 tab 里）
+    const designLang = document.getElementById("language-design");
+    if (designLang) designLang.value = lang;
   }
 }
 

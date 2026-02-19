@@ -1,5 +1,5 @@
 // ===== 状态管理 =====
-let currentMode = "preset"; // preset, clone, design
+let currentMode = "preset"; // preset, clone
 let currentLang = "zh";
 let selectedVoiceId = null;
 let savedVoices = [];

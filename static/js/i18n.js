@@ -77,6 +77,12 @@ const i18n = {
     "history.empty": "暂无历史记录",
     "status.selectVoice": "请选择一个声音",
     "status.paragraph": "段落",
+    "design.newVoice": "新建设计声音",
+    "design.previewText": "试听文本",
+    "design.previewTextPlaceholder": "输入一段话让声音朗读...",
+    "design.preview": "生成预览",
+    "design.generating": "生成中...",
+    "design.saveSuccess": "声音已保存到声音库",
   },
   en: {
     "nav.preset": "Preset Voices",
@@ -155,6 +161,12 @@ const i18n = {
     "history.empty": "No history yet",
     "status.selectVoice": "Please select a voice",
     "status.paragraph": "Paragraph",
+    "design.newVoice": "New Design Voice",
+    "design.previewText": "Preview Text",
+    "design.previewTextPlaceholder": "Enter some text for the voice to read...",
+    "design.preview": "Generate Preview",
+    "design.generating": "Generating...",
+    "design.saveSuccess": "Voice saved to library",
   },
 };
 

@@ -1544,6 +1544,130 @@ async def cache_all_voice_prompts():
     return {"cached": cached, "failed": failed, "message": f"已缓存 {len(cached)} 个声音"}
 
 
+@app.post("/voices/design-preview")
+async def design_voice_preview(
+    text: str = Form(..., description="试听文本"),
+    language: str = Form("Chinese", description="语言"),
+    instruct: str = Form(..., description="声音描述"),
+):
+    """
+    设计声音预览：用 design 模型生成试听音频
+
+    返回 base64 音频，前端播放试听
+    """
+    import base64
+
+    if model_status["design"] != "loaded":
+        raise HTTPException(status_code=503, detail={"error": "model_not_loaded", "model": "design", "status": model_status["design"]})
+
+    if not text:
+        raise HTTPException(status_code=400, detail="试听文本不能为空")
+    if not instruct:
+        raise HTTPException(status_code=400, detail="声音描述不能为空")
+
+    try:
+        print(f"[设计预览] 生成试听: {len(text)} 字 | 描述: {instruct[:30]}")
+        start_time = time.time()
+
+        wavs, sr = model_design.generate_voice_design(
+            text=text,
+            language=language,
+            instruct=instruct,
+        )
+
+        elapsed = time.time() - start_time
+        print(f"[设计预览] 完成: {elapsed:.2f}s")
+
+        audio_buffer = io.BytesIO()
+        sf.write(audio_buffer, wavs[0], sr, format='WAV')
+        audio_buffer.seek(0)
+        audio_base64 = base64.b64encode(audio_buffer.read()).decode('utf-8')
+
+        return JSONResponse({
+            "audio": audio_base64,
+            "sample_rate": sr,
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/voices/design-save")
+async def design_voice_save(
+    name: str = Form(..., description="声音名称"),
+    language: str = Form("Chinese", description="语言"),
+    instruct: str = Form(..., description="声音描述"),
+    text: str = Form(..., description="试听文本"),
+    audio_base64: str = Form(..., description="预览生成的音频 base64"),
+):
+    """
+    保存设计声音到声音库
+
+    用预览生成的音频作为参考音频，提取 clone prompt 缓存
+    """
+    import base64
+    import uuid
+
+    if not name.strip():
+        raise HTTPException(status_code=400, detail="声音名称不能为空")
+
+    # 解码 base64 音频
+    try:
+        audio_bytes = base64.b64decode(audio_base64)
+    except Exception:
+        raise HTTPException(status_code=400, detail="音频数据无效")
+
+    # 生成唯一 ID
+    voice_id = f"{int(time.time())}_{uuid.uuid4().hex[:8]}"
+    voice_dir = VOICES_DIR / voice_id
+    voice_dir.mkdir(exist_ok=True)
+
+    try:
+        # 保存音频文件
+        audio_path = voice_dir / "reference.wav"
+        with open(audio_path, "wb") as f:
+            f.write(audio_bytes)
+
+        # 保存元数据（含声音描述）
+        meta = {
+            "name": name.strip(),
+            "language": language,
+            "ref_text": text,
+            "audio_file": "reference.wav",
+            "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "source": "design",
+            "instruct": instruct,
+        }
+        with open(voice_dir / "meta.json", "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
+
+        # 如果克隆模型已加载，预生成 voice prompt
+        prompt_cached = False
+        if model_status["clone"] == "loaded":
+            try:
+                get_or_create_voice_prompt(voice_id, str(audio_path), text)
+                prompt_cached = True
+            except Exception as e:
+                print(f"[警告] 预生成 prompt 失败: {e}")
+
+        return {
+            "success": True,
+            "voice_id": voice_id,
+            "name": name.strip(),
+            "prompt_cached": prompt_cached,
+            "message": "声音保存成功" + ("（已缓存）" if prompt_cached else "")
+        }
+
+    except Exception as e:
+        if voice_dir.exists():
+            shutil.rmtree(voice_dir)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/voices/save")
 async def save_voice(
     name: str = Form(..., description="声音名称"),

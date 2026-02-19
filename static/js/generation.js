@@ -436,15 +436,6 @@ async function generate() {
     return;
   }
 
-  // 验证声音设计模式
-  if (currentMode === "design") {
-    const desc = document.getElementById("voice-desc").value.trim();
-    if (!desc) {
-      statusEl.textContent = t("status.needDesc");
-      return;
-    }
-  }
-
   btn.disabled = true;
   btn.innerHTML = `<span class="spinner"></span><span>${t("status.generating")}</span>`;
   statusEl.textContent = "";
@@ -471,7 +462,6 @@ async function generate() {
   }
 
   try {
-    let response;
     let stats = null;
 
     if (currentMode === "preset") {
@@ -601,75 +591,7 @@ async function generate() {
       btn.disabled = false;
       btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.previewSentences")}</span>`;
       return;
-    } else if (currentMode === "design") {
-      const language = document.getElementById("language-design").value;
-      const desc = document.getElementById("voice-desc").value.trim();
-
-      lastGenerateParams = { mode: "design", language, instruct: desc };
-
-      // 使用声音设计的分句进度生成
-      const params = new URLSearchParams({ text, language, instruct: desc });
-
-      const result = await generateWithProgress(
-        `/design/progress?${params.toString()}`,
-        btn,
-        statusEl,
-      );
-      if (!result) return;
-
-      audioElement.src = result.audioUrl;
-      stats = result.stats;
-
-      loadWaveform();
-      audioElement.play();
-      document.getElementById("player-section").classList.remove("hidden");
-
-      if (stats) {
-        lastStatsData = stats;
-        renderStats();
-      }
-
-      if (sentenceTexts.length <= 1) {
-        statusEl.innerHTML = `<span class="text-green-600">${t("status.success")}</span>`;
-      }
-      document.getElementById("save-voice-section").classList.add("hidden");
-
-      saveToHistory(text, "design");
-      btn.disabled = false;
-      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.previewSentences")}</span>`;
-      return;
     }
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || t("status.failed"));
-    }
-
-    // 播放音频
-    const blob = await response.blob();
-    audioElement.src = URL.createObjectURL(blob);
-    loadWaveform();
-    audioElement.play();
-
-    // 显示播放器
-    document.getElementById("player-section").classList.remove("hidden");
-
-    // 显示统计
-    const charCount = response.headers.get("X-Char-Count");
-    const elapsed = response.headers.get("X-Elapsed");
-    const avgPerChar = response.headers.get("X-Avg-Per-Char");
-
-    if (charCount && elapsed) {
-      lastStatsData = {
-        char_count: charCount,
-        sentence_count: null,
-        elapsed,
-        avg_per_char: avgPerChar,
-      };
-      renderStats();
-    }
-
-    statusEl.innerHTML = `<span class="text-green-600">${t("status.success")}</span>`;
   } catch (error) {
     statusEl.innerHTML = `<span class="text-red-600">${t("status.failed")}: ${error.message}</span>`;
   } finally {
@@ -704,10 +626,6 @@ function buildLastGenerateParams() {
         clone_prompt_id: clonePromptId || null,
       };
     }
-  } else if (currentMode === "design") {
-    const language = document.getElementById("language-design").value;
-    const desc = document.getElementById("voice-desc").value.trim();
-    lastGenerateParams = { mode: "design", language, instruct: desc };
   }
 }
 
@@ -731,7 +649,6 @@ async function generateMixedVoices(texts, instructs, voiceConfigs) {
       lastGenerateParams.mode === "clone"
     )
       modelsNeeded.add("clone");
-    else if (lastGenerateParams.mode === "design") modelsNeeded.add("design");
   }
 
   for (const modelType of modelsNeeded) {
