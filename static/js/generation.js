@@ -4,6 +4,38 @@
 let currentEventSource = null;
 let isGenerating = false;
 let currentSubtitles = null;
+let generateStartTime = 0;
+let generateTimerInterval = null;
+
+function startGenerateTimer() {
+  generateStartTime = Date.now();
+  stopGenerateTimer();
+  const statusEl = document.getElementById("status-message");
+  generateTimerInterval = setInterval(() => {
+    if (!isGenerating) {
+      stopGenerateTimer();
+      return;
+    }
+    const elapsed = ((Date.now() - generateStartTime) / 1000).toFixed(1);
+    const timerSpan = statusEl.querySelector(".gen-timer");
+    if (timerSpan) timerSpan.textContent = elapsed + "s";
+  }, 100);
+}
+
+function stopGenerateTimer() {
+  if (generateTimerInterval) {
+    clearInterval(generateTimerInterval);
+    generateTimerInterval = null;
+  }
+}
+
+function genStatusText(parts) {
+  const elapsed = ((Date.now() - generateStartTime) / 1000).toFixed(1);
+  return (
+    parts +
+    ` <span class="gen-timer" style="font-variant-numeric:tabular-nums">${elapsed}s</span>`
+  );
+}
 
 function stopGeneration() {
   if (currentEventSource) {
@@ -11,6 +43,7 @@ function stopGeneration() {
     currentEventSource = null;
   }
   isGenerating = false;
+  stopGenerateTimer();
   isPreviewing = false;
   generatingProgress = -1;
   currentSubtitles = null;
@@ -158,6 +191,7 @@ async function regenerateSentence(index) {
 
 async function generateWithProgress(url, btn, statusEl) {
   isGenerating = true;
+  startGenerateTimer();
 
   // 获取文本并分句显示
   const text = document.getElementById("text-input").value.trim();
@@ -177,9 +211,11 @@ async function generateWithProgress(url, btn, statusEl) {
         if (data.started) {
           totalSentences = data.total;
           if (data.paragraphs > 1) {
-            statusEl.textContent = `${t("status.generating")} ${t("status.paragraph")} 1/${data.paragraphs}`;
+            statusEl.innerHTML = genStatusText(
+              `${t("status.generating")} ${t("status.paragraph")} 1/${data.paragraphs}`,
+            );
           } else {
-            statusEl.textContent = t("status.generating");
+            statusEl.innerHTML = genStatusText(t("status.generating"));
           }
           // 显示停止按钮
           btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${t("btn.stop")}</span>`;
@@ -194,9 +230,13 @@ async function generateWithProgress(url, btn, statusEl) {
             data.progress;
           btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${current}/${total} ${t("stats.sentences")} (${percent}%)</span>`;
           if (total_paragraphs > 1) {
-            statusEl.textContent = `${t("status.generating")} ${t("status.paragraph")} ${paragraph}/${total_paragraphs} — ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
+            statusEl.innerHTML = genStatusText(
+              `${t("status.generating")} ${t("status.paragraph")} ${paragraph}/${total_paragraphs} — ${current}/${total} ${t("stats.sentences")} (${percent}%)`,
+            );
           } else {
-            statusEl.textContent = `${t("status.generating")} ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
+            statusEl.innerHTML = genStatusText(
+              `${t("status.generating")} ${current}/${total} ${t("stats.sentences")} (${percent}%)`,
+            );
           }
           updateGeneratingProgress(current);
         }
@@ -205,6 +245,7 @@ async function generateWithProgress(url, btn, statusEl) {
           eventSource.close();
           currentEventSource = null;
           isGenerating = false;
+          stopGenerateTimer();
 
           // 保存每句音频和文本
           if (data.sentence_audios) {
@@ -244,6 +285,7 @@ async function generateWithProgress(url, btn, statusEl) {
           eventSource.close();
           currentEventSource = null;
           isGenerating = false;
+          stopGenerateTimer();
           hideProgressView();
           btn.onclick = enterPreviewMode;
           reject(new Error(data.error));
@@ -257,6 +299,7 @@ async function generateWithProgress(url, btn, statusEl) {
       eventSource.close();
       currentEventSource = null;
       isGenerating = false;
+      stopGenerateTimer();
       hideProgressView();
       btn.onclick = enterPreviewMode;
       reject(new Error(t("status.failed")));
@@ -273,6 +316,7 @@ async function generateWithProgress(url, btn, statusEl) {
 // POST版本的进度生成（用于克隆，需要上传文件）
 async function generateWithProgressPost(url, formData, btn, statusEl) {
   isGenerating = true;
+  startGenerateTimer();
   const text = document.getElementById("text-input").value.trim();
   sentenceTexts = splitTextToSentences(text);
   generatingProgress = 0;
@@ -308,9 +352,11 @@ async function generateWithProgressPost(url, formData, btn, statusEl) {
             const data = JSON.parse(line.slice(6));
             if (data.started) {
               if (data.paragraphs > 1) {
-                statusEl.textContent = `${t("status.generating")} ${t("status.paragraph")} 1/${data.paragraphs}`;
+                statusEl.innerHTML = genStatusText(
+                  `${t("status.generating")} ${t("status.paragraph")} 1/${data.paragraphs}`,
+                );
               } else {
-                statusEl.textContent = t("status.generating");
+                statusEl.innerHTML = genStatusText(t("status.generating"));
               }
               updateGeneratingProgress(0);
             }
@@ -319,9 +365,13 @@ async function generateWithProgressPost(url, formData, btn, statusEl) {
                 data.progress;
               btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${current}/${total} ${t("stats.sentences")} (${percent}%)</span>`;
               if (total_paragraphs > 1) {
-                statusEl.textContent = `${t("status.generating")} ${t("status.paragraph")} ${paragraph}/${total_paragraphs} — ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
+                statusEl.innerHTML = genStatusText(
+                  `${t("status.generating")} ${t("status.paragraph")} ${paragraph}/${total_paragraphs} — ${current}/${total} ${t("stats.sentences")} (${percent}%)`,
+                );
               } else {
-                statusEl.textContent = `${t("status.generating")} ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
+                statusEl.innerHTML = genStatusText(
+                  `${t("status.generating")} ${current}/${total} ${t("stats.sentences")} (${percent}%)`,
+                );
               }
               updateGeneratingProgress(current);
             }
@@ -360,6 +410,7 @@ async function generateWithProgressPost(url, formData, btn, statusEl) {
     }
 
     isGenerating = false;
+    stopGenerateTimer();
     // 始终显示句子编辑视图
     selectedSentenceIndex = -1;
     showSentenceEditorView();
@@ -367,6 +418,7 @@ async function generateWithProgressPost(url, formData, btn, statusEl) {
     return result;
   } catch (error) {
     isGenerating = false;
+    stopGenerateTimer();
     hideProgressView();
     btn.onclick = enterPreviewMode;
     statusEl.innerHTML = `<span class="text-red-600">${t("status.failed")}: ${error.message}</span>`;
@@ -683,6 +735,7 @@ async function generateMixedVoices(texts, instructs, voiceConfigs) {
   }
 
   isGenerating = true;
+  startGenerateTimer();
   sentenceTexts = texts;
   sentenceInstructs = instructs;
   sentenceVoiceConfigs = voiceConfigs;
@@ -697,7 +750,9 @@ async function generateMixedVoices(texts, instructs, voiceConfigs) {
   btn.disabled = false;
   btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${t("btn.stop")}</span>`;
   btn.onclick = stopGeneration;
-  statusEl.textContent = `${t("status.generating")} 0/${texts.length} ${t("stats.sentences")} (0%)`;
+  statusEl.innerHTML = genStatusText(
+    `${t("status.generating")} 0/${texts.length} ${t("stats.sentences")} (0%)`,
+  );
 
   const startTime = Date.now();
 
@@ -706,7 +761,9 @@ async function generateMixedVoices(texts, instructs, voiceConfigs) {
       if (!isGenerating) return; // 用户按了停止
 
       updateGeneratingProgress(i);
-      statusEl.textContent = `${t("status.generating")} ${i}/${texts.length} ${t("stats.sentences")} (${Math.round((i / texts.length) * 100)}%)`;
+      statusEl.innerHTML = genStatusText(
+        `${t("status.generating")} ${i}/${texts.length} ${t("stats.sentences")} (${Math.round((i / texts.length) * 100)}%)`,
+      );
       btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${i}/${texts.length} ${t("stats.sentences")}</span>`;
 
       const formData = new FormData();
@@ -759,6 +816,7 @@ async function generateMixedVoices(texts, instructs, voiceConfigs) {
 
     // 全部完成
     isGenerating = false;
+    stopGenerateTimer();
     generatingProgress = -1;
 
     // 重建音频
@@ -790,6 +848,7 @@ async function generateMixedVoices(texts, instructs, voiceConfigs) {
     btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.previewSentences")}</span>`;
   } catch (error) {
     isGenerating = false;
+    stopGenerateTimer();
     generatingProgress = -1;
     statusEl.innerHTML = `<span class="text-red-600">${t("status.failed")}: ${error.message}</span>`;
     btn.disabled = false;

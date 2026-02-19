@@ -41,17 +41,7 @@ let sentencePreviewIndex = -1;
 let lastStatsData = null; // {char_count, sentence_count, elapsed, avg_per_char}
 
 function renderStats() {
-  if (!lastStatsData) return;
-  const s = lastStatsData;
-  if (s.sentence_count != null) {
-    document.getElementById("stats-chars").textContent =
-      `${s.char_count} ${t("stats.chars")} · ${s.sentence_count} ${t("stats.sentences")} · ${s.elapsed}s`;
-  } else {
-    document.getElementById("stats-chars").textContent =
-      `${s.char_count} ${t("stats.chars")} · ${s.elapsed}s`;
-  }
-  document.getElementById("stats-speed").textContent =
-    `${s.avg_per_char}s/${t("stats.chars")}`;
+  // stats 已移到右上角 status-message，由 showSentenceEditorView 渲染
 }
 
 // 根据当前 sentenceTexts 重算统计并更新显示

@@ -316,7 +316,14 @@ function showSentenceEditorView() {
     // 生成后：清除状态消息，隐藏生成按钮，显示句子工具栏
     actionBar.classList.remove("justify-between");
     actionBar.classList.add("justify-end");
-    document.getElementById("status-message").textContent = "";
+    // 右上角显示统计信息
+    const statusMsg = document.getElementById("status-message");
+    if (lastStatsData) {
+      const s = lastStatsData;
+      statusMsg.innerHTML = `<span style="color:#718096">${s.char_count} ${t("stats.chars")} · ${s.sentence_count} ${t("stats.sentences")} · ${s.elapsed}s · ${s.avg_per_char}s/${t("stats.chars")}</span>`;
+    } else {
+      statusMsg.textContent = "";
+    }
     document.getElementById("generate-btn").style.display = "none";
     const toolbar = document.getElementById("sentence-toolbar");
     toolbar.classList.remove("hidden");
