@@ -27,6 +27,11 @@ function switchMode(mode) {
   } else {
     document.getElementById("save-voice-section").classList.add("hidden");
   }
+
+  // 刷新句子编辑器（情感标签显隐跟随当前模式）
+  if (isPreviewing || sentenceAudios.length > 0) {
+    showSentenceEditorView();
+  }
 }
 
 // ===== 页面切换 =====
@@ -158,6 +163,7 @@ function hideProgressView() {
   progressView.style.overflow = "";
   progressView.classList.add("hidden");
   updateCharCount();
+  document.getElementById("status-message").textContent = "";
   // 恢复生成按钮（分句预览按钮），隐藏句子工具栏
   const genBtn = document.getElementById("generate-btn");
   genBtn.style.display = "";
@@ -270,32 +276,45 @@ function showSentenceEditorView() {
   progressView.style.overflow = "hidden";
   progressView.classList.remove("hidden");
 
+  const actionBar = document.getElementById("action-bar");
   if (generating) {
     // 生成中：不触碰生成按钮（generation.js 已将其改为停止按钮），不显示句子工具栏
+    actionBar.classList.remove("justify-between");
+    actionBar.classList.add("justify-end");
     const toolbar = document.getElementById("sentence-toolbar");
     toolbar.style.display = "none";
     toolbar.classList.add("hidden");
   } else if (previewing) {
-    // 预编辑模式：显示"生成语音"按钮和"返回编辑"按钮
+    // 预编辑模式：左侧"返回编辑"，右侧"生成语音"
+    actionBar.classList.remove("justify-end");
+    actionBar.classList.add("justify-between");
     const btn = document.getElementById("generate-btn");
     btn.style.display = "";
     btn.disabled = false;
     btn.onclick = generate;
     btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>${t("btn.startGenerate")}</span>`;
-    // 显示"返回编辑"在状态消息区
-    document.getElementById("status-message").innerHTML =
-      `<button onclick="exitPreviewMode()" style="background:none;border:none;cursor:pointer;color:#E07A5F;font-size:13px">← ${t("btn.backToInput")}</button>`;
-    // 不显示句子工具栏（无音频，停顿控件无意义）
+    document.getElementById("status-message").textContent = "";
+    // 显示句子工具栏（仅"返回编辑"按钮，停顿控件隐藏）
     const toolbar = document.getElementById("sentence-toolbar");
-    toolbar.style.display = "none";
-    toolbar.classList.add("hidden");
+    toolbar.classList.remove("hidden");
+    toolbar.style.display = "flex";
+    toolbar.style.width = "auto";
+    document.getElementById("preview-back-btn").style.display = "";
+    document.getElementById("toolbar-new-btn").style.display = "none";
+    document.getElementById("toolbar-pace").style.display = "none";
   } else {
     // 生成后：清除状态消息，隐藏生成按钮，显示句子工具栏
+    actionBar.classList.remove("justify-between");
+    actionBar.classList.add("justify-end");
     document.getElementById("status-message").textContent = "";
     document.getElementById("generate-btn").style.display = "none";
     const toolbar = document.getElementById("sentence-toolbar");
     toolbar.classList.remove("hidden");
     toolbar.style.display = "flex";
+    toolbar.style.width = "100%";
+    document.getElementById("preview-back-btn").style.display = "none";
+    document.getElementById("toolbar-new-btn").style.display = "";
+    document.getElementById("toolbar-pace").style.display = "";
     // 同步停顿控件值
     document.getElementById("st-pace-label").textContent = t("label.pace");
     document.getElementById("st-pace-value").textContent =
@@ -827,6 +846,10 @@ function exitPreviewMode() {
   sentenceInstructs = [];
   sentenceVoiceConfigs = [];
   hideProgressView();
+  // 恢复操作栏布局
+  const actionBar = document.getElementById("action-bar");
+  actionBar.classList.remove("justify-between");
+  actionBar.classList.add("justify-end");
   // 恢复按钮为"分句预览"
   resetToPreviewButton();
 }

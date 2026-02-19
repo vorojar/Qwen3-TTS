@@ -423,6 +423,7 @@ async function generate() {
   const modelReady = await ensureModelLoaded(modelType);
   if (!modelReady) {
     hideProgressView();
+    statusEl.innerHTML = `<span class="text-red-600">${t("status.failed")}</span>`;
     btn.disabled = false;
     return;
   }
@@ -694,6 +695,7 @@ async function generateMixedVoices(texts, instructs, voiceConfigs) {
     const ready = await ensureModelLoaded(modelType);
     if (!ready) {
       hideProgressView();
+      statusEl.innerHTML = `<span class="text-red-600">${t("status.failed")}</span>`;
       btn.disabled = false;
       return;
     }
@@ -796,7 +798,7 @@ async function generateMixedVoices(texts, instructs, voiceConfigs) {
     renderStats();
 
     saveSession();
-    saveToHistory(texts.join(""), "mixed");
+    saveToHistory(texts.join(""), lastGenerateParams?.mode || currentMode);
 
     selectedSentenceIndex = -1;
     showSentenceEditorView();
@@ -839,16 +841,23 @@ async function generateFromPreview() {
   // 无覆盖，走原有批量生成流程
   await generate();
 
-  // 生成完成后，尝试对齐 sentenceInstructs 和 voiceConfigs
-  if (sentenceTexts.length === editedInstructs.length) {
-    sentenceInstructs = editedInstructs;
+  // generate() 正常完成时 sentenceAudios 已填充
+  if (sentenceAudios.length > 0 && sentenceTexts.length > 0) {
+    // 生成成功：恢复编辑后的 instructs 和 voiceConfigs
+    if (sentenceTexts.length === editedInstructs.length) {
+      sentenceInstructs = editedInstructs;
+    }
+    if (sentenceTexts.length === editedVoiceConfigs.length) {
+      sentenceVoiceConfigs = editedVoiceConfigs;
+    }
+    saveSession();
+  } else {
+    // 验证失败或模型加载失败，确保回到 textarea 视图
+    const textInput = document.getElementById("text-input");
+    if (textInput.classList.contains("hidden")) {
+      hideProgressView();
+    }
   }
-  if (sentenceTexts.length === editedVoiceConfigs.length) {
-    sentenceVoiceConfigs = editedVoiceConfigs;
-  }
-  // 数量不同则保留 generate() 里设的默认值
-
-  saveSession();
 }
 
 async function ensureModelLoaded(modelType) {

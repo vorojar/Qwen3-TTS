@@ -69,8 +69,11 @@
                 <!-- 文本输入区 -->
                 <div class="flex-1 p-6 flex flex-col min-h-0">
                     <div class="flex items-center justify-between mb-3">
-                        <h2 class="text-lg font-semibold text-charcoal" data-i18n="main.title">文字转语音</h2>
-                        <span id="char-count" class="text-sm text-charcoal/50">0 <span data-i18n="stats.chars">字</span></span>
+                        <div class="flex items-center gap-2">
+                            <h2 class="text-lg font-semibold text-charcoal" data-i18n="main.title">文字转语音</h2>
+                            <span id="char-count" class="text-sm" style="color:#a0aec0">0 <span data-i18n="stats.chars">字</span></span>
+                        </div>
+                        <div id="status-message" class="text-sm text-charcoal/60"></div>
                     </div>
                     <textarea
                         id="text-input"
@@ -82,20 +85,16 @@
                     <!-- 生成进度视图 (生成时显示) -->
                     <div id="progress-view" class="hidden input-field flex-1 text-base" style="line-height:1.8;min-height:0"></div>
                     <!-- 操作栏 -->
-                    <div class="flex items-center justify-between mt-4">
-                        <div id="status-message" class="text-sm text-charcoal/60"></div>
-                        <button id="generate-btn" onclick="enterPreviewMode()" class="btn-primary">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                            </svg>
-                            <span data-i18n="btn.previewSentences">分句预览</span>
-                        </button>
+                    <div id="action-bar" class="flex items-center justify-end mt-4">
                         <!-- 句子视图工具栏（句子视图时替代生成按钮） -->
                         <div id="sentence-toolbar" class="hidden" style="display:none;align-items:center;gap:12px;width:100%">
-                            <button onclick="clearAndRestart()" class="sentence-new-btn">
+                            <button id="preview-back-btn" onclick="exitPreviewMode()" class="sentence-new-btn" style="display:none">
+                                ← <span data-i18n="btn.backToInput">返回编辑</span>
+                            </button>
+                            <button id="toolbar-new-btn" onclick="clearAndRestart()" class="sentence-new-btn">
                                 ＋ <span data-i18n="btn.newProject">新建</span>
                             </button>
-                            <div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:#718096">
+                            <div id="toolbar-pace" style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:#718096">
                                 <span id="st-pace-label"></span>
                                 <span id="st-pace-value" style="min-width:28px;text-align:center;font-variant-numeric:tabular-nums"></span>
                                 <input type="range" id="st-pace-range" min="0" max="2" step="0.1"
@@ -104,6 +103,12 @@
                                     onchange="saveSession()">
                             </div>
                         </div>
+                        <button id="generate-btn" onclick="enterPreviewMode()" class="btn-primary">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                            </svg>
+                            <span data-i18n="btn.previewSentences">分句预览</span>
+                        </button>
                     </div>
                 </div>
 
