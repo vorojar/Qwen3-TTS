@@ -337,6 +337,7 @@ function clearAndRestart() {
   sentenceTexts = [];
   sentenceInstructs = [];
   sentenceVoiceConfigs = [];
+  sentenceParagraphBreaks = [];
   decodedPcmCache = [];
   currentSubtitles = null;
   lastGenerateParams = null;
@@ -623,9 +624,14 @@ function deleteSentence(index) {
   }
   if (!confirm(t("confirm.deleteSentence"))) return;
   finishEditing();
+  // 删除段落开头句时，把段落标记传递给下一句
+  if (sentenceParagraphBreaks[index] && index + 1 < sentenceParagraphBreaks.length) {
+    sentenceParagraphBreaks[index + 1] = true;
+  }
   sentenceTexts.splice(index, 1);
   sentenceInstructs.splice(index, 1);
   sentenceVoiceConfigs.splice(index, 1);
+  sentenceParagraphBreaks.splice(index, 1);
   if (isPreviewing) {
     // 预编辑模式：无音频，跳过 rebuildAudioAndSubtitles
     if (selectedSentenceIndex >= sentenceTexts.length)
@@ -728,6 +734,7 @@ async function confirmInsert(afterIndex) {
     sentenceTexts.splice(afterIndex, 0, newText);
     sentenceInstructs.splice(afterIndex, 0, newInstruct);
     sentenceVoiceConfigs.splice(afterIndex, 0, null);
+    sentenceParagraphBreaks.splice(afterIndex, 0, false); // 插入句子属于同段落
     selectedSentenceIndex = afterIndex;
     showSentenceEditorView();
     return;
@@ -791,6 +798,7 @@ async function confirmInsert(afterIndex) {
     sentenceTexts.splice(afterIndex, 0, newText);
     sentenceInstructs.splice(afterIndex, 0, newInstruct);
     sentenceVoiceConfigs.splice(afterIndex, 0, null);
+    sentenceParagraphBreaks.splice(afterIndex, 0, false);
     decodedPcmCache = [];
     rebuildAudioAndSubtitles();
     saveSession();
@@ -827,7 +835,21 @@ function enterPreviewMode() {
     document.getElementById("status-message").textContent = t("status.enterText");
     return;
   }
-  sentenceTexts = splitTextToSentences(text);
+  // 按段落分再分句，记录段落边界
+  const rawParagraphs = text.split('\n').filter(p => p.trim());
+  sentenceTexts = [];
+  sentenceParagraphBreaks = [];
+  for (const para of rawParagraphs) {
+    const sents = splitTextToSentences(para.trim());
+    for (let i = 0; i < sents.length; i++) {
+      sentenceParagraphBreaks.push(i === 0); // 段落第一句标记为 true
+      sentenceTexts.push(sents[i]);
+    }
+  }
+  if (sentenceTexts.length === 0) {
+    sentenceTexts = [text];
+    sentenceParagraphBreaks = [true];
+  }
   const instruct = document.getElementById("instruct")?.value?.trim() || "";
   sentenceInstructs = sentenceTexts.map(() =>
     currentMode === "preset" ? instruct : ""
@@ -839,16 +861,27 @@ function enterPreviewMode() {
   showSentenceEditorView();
 }
 
+// 将 sentenceTexts 按段落边界拼回完整文本（保留 \n）
+function joinSentencesWithParagraphs() {
+  let result = "";
+  for (let i = 0; i < sentenceTexts.length; i++) {
+    if (i > 0 && sentenceParagraphBreaks[i]) result += "\n";
+    result += sentenceTexts[i];
+  }
+  return result;
+}
+
 function exitPreviewMode() {
   // 同步文本回 textarea
   finishEditing();
   if (sentenceTexts.length > 0) {
-    document.getElementById("text-input").value = sentenceTexts.join("");
+    document.getElementById("text-input").value = joinSentencesWithParagraphs();
   }
   isPreviewing = false;
   sentenceTexts = [];
   sentenceInstructs = [];
   sentenceVoiceConfigs = [];
+  sentenceParagraphBreaks = [];
   hideProgressView();
   // 恢复操作栏布局
   const actionBar = document.getElementById("action-bar");

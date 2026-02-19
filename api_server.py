@@ -699,71 +699,51 @@ async def tts_with_progress(
             loop = asyncio.get_event_loop()
 
             for p_idx, paragraph in enumerate(paragraphs):
-                # 检查客户端是否断开
-                if await request.is_disconnected():
-                    print(f"[TTS进度] 客户端已断开，停止生成 (段落 {p_idx}/{num_paragraphs})")
-                    return
-
                 sent_start, sent_end = para_sent_map[p_idx]
                 para_sentences = all_sentences[sent_start:sent_end]
 
-                # 推送段落开始生成
-                yield f"data: {json.dumps({'progress': {'current': sent_start, 'total': total, 'percent': round(sent_start / total * 100), 'paragraph': p_idx + 1, 'total_paragraphs': num_paragraphs, 'generating': True}}, ensure_ascii=False)}\n\n"
+                # 逐句生成
+                for c_idx, sentence in enumerate(para_sentences):
+                    if await request.is_disconnected():
+                        print(f"[TTS进度] 客户端已断开，停止生成 (句 {sent_start+c_idx}/{total})")
+                        return
 
-                # 整段调模型
-                wavs, sr = await loop.run_in_executor(
-                    None,
-                    lambda p=paragraph: model_custom.generate_custom_voice(
-                        text=p,
-                        language=language,
-                        speaker=speaker,
-                        instruct=instruct,
+                    wavs, sr = await loop.run_in_executor(
+                        None,
+                        lambda s=sentence: model_custom.generate_custom_voice(
+                            text=s,
+                            language=language,
+                            speaker=speaker,
+                            instruct=instruct,
+                        )
                     )
-                )
 
-                # 生成后再次检查断开
-                if await request.is_disconnected():
-                    print(f"[TTS进度] 客户端已断开，停止生成 (段落 {p_idx+1}/{num_paragraphs})")
-                    return
-
-                sample_rate = sr
-
-                # 静音检测切句
-                if len(para_sentences) == 1:
-                    chunks = [wavs[0]]
-                else:
-                    chunks = align_audio_to_sentences(wavs[0], sr, para_sentences)
-
-                # 收集每句音频
-                for c_idx, chunk in enumerate(chunks):
-                    sent_idx = sent_start + c_idx
+                    sample_rate = sr
+                    chunk = wavs[0]
                     all_audio.append(chunk)
 
-                    # 编码单句音频为 base64
                     sent_buf = io.BytesIO()
                     sf.write(sent_buf, chunk, sr, format='WAV')
                     sent_buf.seek(0)
                     sentence_audios_b64.append(base64.b64encode(sent_buf.read()).decode('utf-8'))
 
-                    # 记录字幕时间
                     duration = len(chunk) / sr
-                    subtitles.append({"text": para_sentences[c_idx], "start": round(current_time, 3), "end": round(current_time + duration, 3)})
+                    subtitles.append({"text": sentence, "start": round(current_time, 3), "end": round(current_time + duration, 3)})
                     current_time += duration
 
-                completed = sent_end
-
-                # 推送进度（段落完成，current 为该段最后一句的索引）
-                progress_data = {
-                    "progress": {
-                        "current": sent_end,
-                        "total": total,
-                        "percent": round(sent_end / total * 100),
-                        "sentence": paragraph[:20] + "..." if len(paragraph) > 20 else paragraph,
-                        "paragraph": p_idx + 1,
-                        "total_paragraphs": num_paragraphs,
+                    completed = sent_start + c_idx + 1
+                    progress_data = {
+                        "progress": {
+                            "current": completed,
+                            "total": total,
+                            "percent": round(completed / total * 100),
+                            "sentence": sentence[:20] + "..." if len(sentence) > 20 else sentence,
+                            "paragraph": p_idx + 1,
+                            "total_paragraphs": num_paragraphs,
+                        }
                     }
-                }
-                yield f"data: {json.dumps(progress_data, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps(progress_data, ensure_ascii=False)}\n\n"
+
                 print(f"[TTS进度] 段落 {p_idx+1}/{num_paragraphs} 完成 (句 {sent_start+1}-{sent_end}/{total}): {paragraph[:30]}...")
 
             # 合并音频
@@ -978,62 +958,50 @@ async def voice_clone_progress(
             loop = asyncio.get_event_loop()
 
             for p_idx, paragraph in enumerate(paragraphs):
-                if await request.is_disconnected():
-                    print(f"[克隆进度] 客户端已断开，停止生成 (段落 {p_idx}/{num_paragraphs})")
-                    return
-
                 sent_start, sent_end = para_sent_map[p_idx]
                 para_sentences = all_sentences[sent_start:sent_end]
 
-                # 推送段落开始生成
-                yield f"data: {json.dumps({'progress': {'current': sent_start, 'total': total, 'percent': round(sent_start / total * 100), 'paragraph': p_idx + 1, 'total_paragraphs': num_paragraphs, 'generating': True}}, ensure_ascii=False)}\n\n"
+                # 逐句生成
+                for c_idx, sentence in enumerate(para_sentences):
+                    if await request.is_disconnected():
+                        print(f"[克隆进度] 客户端已断开，停止生成 (句 {sent_start+c_idx}/{total})")
+                        return
 
-                # 整段调模型
-                wavs, sr = await loop.run_in_executor(
-                    None,
-                    lambda p=paragraph, vp=voice_prompt: model_clone.generate_voice_clone(
-                        text=p,
-                        language=language,
-                        voice_clone_prompt=[vp],
+                    wavs, sr = await loop.run_in_executor(
+                        None,
+                        lambda s=sentence, vp=voice_prompt: model_clone.generate_voice_clone(
+                            text=s,
+                            language=language,
+                            voice_clone_prompt=[vp],
+                        )
                     )
-                )
 
-                if await request.is_disconnected():
-                    print(f"[克隆进度] 客户端已断开，停止生成 (段落 {p_idx+1}/{num_paragraphs})")
-                    return
-
-                sample_rate = sr
-
-                # 静音检测切句
-                if len(para_sentences) == 1:
-                    chunks = [wavs[0]]
-                else:
-                    chunks = align_audio_to_sentences(wavs[0], sr, para_sentences)
-
-                for c_idx, chunk in enumerate(chunks):
+                    sample_rate = sr
+                    chunk = wavs[0]
                     all_audio.append(chunk)
+
                     sent_buf = io.BytesIO()
                     sf.write(sent_buf, chunk, sr, format='WAV')
                     sent_buf.seek(0)
                     sentence_audios_b64.append(base64.b64encode(sent_buf.read()).decode('utf-8'))
 
                     duration = len(chunk) / sr
-                    subtitles.append({"text": para_sentences[c_idx], "start": round(current_time, 3), "end": round(current_time + duration, 3)})
+                    subtitles.append({"text": sentence, "start": round(current_time, 3), "end": round(current_time + duration, 3)})
                     current_time += duration
 
-                completed = sent_end
-
-                progress_data = {
-                    "progress": {
-                        "current": sent_end,
-                        "total": total,
-                        "percent": round(sent_end / total * 100),
-                        "sentence": paragraph[:20] + "..." if len(paragraph) > 20 else paragraph,
-                        "paragraph": p_idx + 1,
-                        "total_paragraphs": num_paragraphs,
+                    completed = sent_start + c_idx + 1
+                    progress_data = {
+                        "progress": {
+                            "current": completed,
+                            "total": total,
+                            "percent": round(completed / total * 100),
+                            "sentence": sentence[:20] + "..." if len(sentence) > 20 else sentence,
+                            "paragraph": p_idx + 1,
+                            "total_paragraphs": num_paragraphs,
+                        }
                     }
-                }
-                yield f"data: {json.dumps(progress_data, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps(progress_data, ensure_ascii=False)}\n\n"
+
                 print(f"[克隆进度] 段落 {p_idx+1}/{num_paragraphs} 完成 (句 {sent_start+1}-{sent_end}/{total}): {paragraph[:30]}...")
 
             merged_audio = np.concatenate(all_audio)
@@ -1192,10 +1160,10 @@ async def voice_design_progress(
             total_chars = len(text)
             num_paragraphs = len(paragraphs)
 
-            # 多段时需要 clone 模型来保持音色一致
-            use_clone_for_consistency = num_paragraphs > 1 and model_status["clone"] == "loaded"
-            if num_paragraphs > 1 and model_status["clone"] != "loaded":
-                print(f"[设计进度] 警告: clone 模型未加载，多段生成将使用 design 模型（音色可能不一致）")
+            # 多句时需要 clone 模型来保持音色一致
+            use_clone_for_consistency = total > 1 and model_status["clone"] == "loaded"
+            if total > 1 and model_status["clone"] != "loaded":
+                print(f"[设计进度] 警告: clone 模型未加载，多句生成将使用 design 模型（音色可能不一致）")
 
             print(f"[设计进度] 开始生成: {total_chars} 字 | {total} 句 | {num_paragraphs} 段 | 语言: {language} | 跨段一致: {use_clone_for_consistency}")
             start_time = time.time()
@@ -1213,98 +1181,87 @@ async def voice_design_progress(
             voice_prompt = None
             clone_session_id = None
 
-            for p_idx, paragraph in enumerate(paragraphs):
-                # 检查客户端是否断开
-                if await request.is_disconnected():
-                    print(f"[设计进度] 客户端已断开，停止生成 (段落 {p_idx}/{num_paragraphs})")
-                    return
+            global_sent_idx = 0  # 全局句子计数，用于判断是否第一句
 
+            for p_idx, paragraph in enumerate(paragraphs):
                 sent_start, sent_end = para_sent_map[p_idx]
                 para_sentences = all_sentences[sent_start:sent_end]
 
-                # 推送段落开始生成
-                yield f"data: {json.dumps({'progress': {'current': sent_start, 'total': total, 'percent': round(sent_start / total * 100), 'paragraph': p_idx + 1, 'total_paragraphs': num_paragraphs, 'generating': True}}, ensure_ascii=False)}\n\n"
+                # 逐句生成
+                for c_idx, sentence in enumerate(para_sentences):
+                    if await request.is_disconnected():
+                        print(f"[设计进度] 客户端已断开，停止生成 (句 {sent_start+c_idx}/{total})")
+                        return
 
-                if p_idx == 0 or not use_clone_for_consistency:
-                    # 第一段（或不使用跨段一致时所有段落）：用 design 模型整段生成
-                    wavs, sr = await loop.run_in_executor(
-                        None,
-                        lambda p=paragraph: model_design.generate_voice_design(
-                            text=p,
-                            language=language,
-                            instruct=instruct,
-                        )
-                    )
-
-                    # 第一段且多段模式：用生成的音频创建 clone prompt
-                    if p_idx == 0 and use_clone_for_consistency:
-                        import uuid as _uuid
-                        voice_prompt = await loop.run_in_executor(
+                    if global_sent_idx == 0 or not use_clone_for_consistency:
+                        # 第一句（或不使用跨段一致时所有句子）：用 design 模型
+                        wavs, sr = await loop.run_in_executor(
                             None,
-                            lambda audio=wavs[0], _sr=sr, ref=paragraph: model_clone.create_voice_clone_prompt(
-                                ref_audio=(audio, _sr),
-                                ref_text=ref,
+                            lambda s=sentence: model_design.generate_voice_design(
+                                text=s,
+                                language=language,
+                                instruct=instruct,
                             )
                         )
-                        voice_prompt = voice_prompt[0]
-                        clone_session_id = _uuid.uuid4().hex
-                        clone_session_prompts[clone_session_id] = {
-                            "prompt": voice_prompt,
-                            "created_at": time.time(),
-                        }
-                        expired = [k for k, v in clone_session_prompts.items() if time.time() - v["created_at"] > 3600]
-                        for k in expired:
-                            del clone_session_prompts[k]
-                        print(f"[设计进度] 已从第一段创建 clone prompt，后续段落将使用 clone 模型")
-                else:
-                    # 后续段：用 clone 模型 + voice_prompt 整段生成（保持音色一致）
-                    wavs, sr = await loop.run_in_executor(
-                        None,
-                        lambda p=paragraph, vp=voice_prompt: model_clone.generate_voice_clone(
-                            text=p,
-                            language=language,
-                            voice_clone_prompt=[vp],
+
+                        # 第一句且多句模式：用生成的音频创建 clone prompt
+                        if global_sent_idx == 0 and use_clone_for_consistency:
+                            import uuid as _uuid
+                            voice_prompt = await loop.run_in_executor(
+                                None,
+                                lambda audio=wavs[0], _sr=sr, ref=sentence: model_clone.create_voice_clone_prompt(
+                                    ref_audio=(audio, _sr),
+                                    ref_text=ref,
+                                )
+                            )
+                            voice_prompt = voice_prompt[0]
+                            clone_session_id = _uuid.uuid4().hex
+                            clone_session_prompts[clone_session_id] = {
+                                "prompt": voice_prompt,
+                                "created_at": time.time(),
+                            }
+                            expired = [k for k, v in clone_session_prompts.items() if time.time() - v["created_at"] > 3600]
+                            for k in expired:
+                                del clone_session_prompts[k]
+                            print(f"[设计进度] 已从第一句创建 clone prompt，后续句子将使用 clone 模型")
+                    else:
+                        # 后续句：用 clone 模型 + voice_prompt（保持音色一致）
+                        wavs, sr = await loop.run_in_executor(
+                            None,
+                            lambda s=sentence, vp=voice_prompt: model_clone.generate_voice_clone(
+                                text=s,
+                                language=language,
+                                voice_clone_prompt=[vp],
+                            )
                         )
-                    )
 
-                # 生成后再次检查断开
-                if await request.is_disconnected():
-                    print(f"[设计进度] 客户端已断开，停止生成 (段落 {p_idx+1}/{num_paragraphs})")
-                    return
-
-                sample_rate = sr
-
-                # 静音检测切句
-                if len(para_sentences) == 1:
-                    chunks = [wavs[0]]
-                else:
-                    chunks = align_audio_to_sentences(wavs[0], sr, para_sentences)
-
-                for c_idx, chunk in enumerate(chunks):
+                    sample_rate = sr
+                    chunk = wavs[0]
                     all_audio.append(chunk)
+
                     sent_buf = io.BytesIO()
                     sf.write(sent_buf, chunk, sr, format='WAV')
                     sent_buf.seek(0)
                     sentence_audios_b64.append(base64.b64encode(sent_buf.read()).decode('utf-8'))
 
                     duration = len(chunk) / sr
-                    subtitles.append({"text": para_sentences[c_idx], "start": round(current_time, 3), "end": round(current_time + duration, 3)})
+                    subtitles.append({"text": sentence, "start": round(current_time, 3), "end": round(current_time + duration, 3)})
                     current_time += duration
 
-                completed = sent_end
-
-                # 推送进度
-                progress_data = {
-                    "progress": {
-                        "current": sent_end,
-                        "total": total,
-                        "percent": round(sent_end / total * 100),
-                        "sentence": paragraph[:20] + "..." if len(paragraph) > 20 else paragraph,
-                        "paragraph": p_idx + 1,
-                        "total_paragraphs": num_paragraphs,
+                    global_sent_idx += 1
+                    completed = sent_start + c_idx + 1
+                    progress_data = {
+                        "progress": {
+                            "current": completed,
+                            "total": total,
+                            "percent": round(completed / total * 100),
+                            "sentence": sentence[:20] + "..." if len(sentence) > 20 else sentence,
+                            "paragraph": p_idx + 1,
+                            "total_paragraphs": num_paragraphs,
+                        }
                     }
-                }
-                yield f"data: {json.dumps(progress_data, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps(progress_data, ensure_ascii=False)}\n\n"
+
                 print(f"[设计进度] 段落 {p_idx+1}/{num_paragraphs} 完成 (句 {sent_start+1}-{sent_end}/{total}): {paragraph[:30]}...")
 
             # 合并音频
@@ -1902,65 +1859,50 @@ async def tts_with_saved_voice_progress(
             loop = asyncio.get_event_loop()
 
             for p_idx, paragraph in enumerate(paragraphs):
-                # 检查客户端是否断开
-                if await request.is_disconnected():
-                    print(f"[声音库进度] 客户端已断开，停止生成 (段落 {p_idx}/{num_paragraphs})")
-                    return
-
                 sent_start, sent_end = para_sent_map[p_idx]
                 para_sentences = all_sentences[sent_start:sent_end]
 
-                # 推送段落开始生成
-                yield f"data: {json.dumps({'progress': {'current': sent_start, 'total': total, 'percent': round(sent_start / total * 100), 'paragraph': p_idx + 1, 'total_paragraphs': num_paragraphs, 'generating': True}}, ensure_ascii=False)}\n\n"
+                # 逐句生成
+                for c_idx, sentence in enumerate(para_sentences):
+                    if await request.is_disconnected():
+                        print(f"[声音库进度] 客户端已断开，停止生成 (句 {sent_start+c_idx}/{total})")
+                        return
 
-                # 整段调模型
-                wavs, sr = await loop.run_in_executor(
-                    None,
-                    lambda p=paragraph, vp=voice_prompt: model_clone.generate_voice_clone(
-                        text=p,
-                        language=use_language,
-                        voice_clone_prompt=[vp],
+                    wavs, sr = await loop.run_in_executor(
+                        None,
+                        lambda s=sentence, vp=voice_prompt: model_clone.generate_voice_clone(
+                            text=s,
+                            language=use_language,
+                            voice_clone_prompt=[vp],
+                        )
                     )
-                )
 
-                # 生成后再次检查断开
-                if await request.is_disconnected():
-                    print(f"[声音库进度] 客户端已断开，停止生成 (段落 {p_idx+1}/{num_paragraphs})")
-                    return
-
-                sample_rate = sr
-
-                # 静音检测切句
-                if len(para_sentences) == 1:
-                    chunks = [wavs[0]]
-                else:
-                    chunks = align_audio_to_sentences(wavs[0], sr, para_sentences)
-
-                for c_idx, chunk in enumerate(chunks):
+                    sample_rate = sr
+                    chunk = wavs[0]
                     all_audio.append(chunk)
+
                     sent_buf = io.BytesIO()
                     sf.write(sent_buf, chunk, sr, format='WAV')
                     sent_buf.seek(0)
                     sentence_audios_b64.append(base64.b64encode(sent_buf.read()).decode('utf-8'))
 
                     duration = len(chunk) / sr
-                    subtitles.append({"text": para_sentences[c_idx], "start": round(current_time, 3), "end": round(current_time + duration, 3)})
+                    subtitles.append({"text": sentence, "start": round(current_time, 3), "end": round(current_time + duration, 3)})
                     current_time += duration
 
-                completed = sent_end
-
-                # 推送进度
-                progress_data = {
-                    "progress": {
-                        "current": sent_end,
-                        "total": total,
-                        "percent": round(sent_end / total * 100),
-                        "sentence": paragraph[:20] + "..." if len(paragraph) > 20 else paragraph,
-                        "paragraph": p_idx + 1,
-                        "total_paragraphs": num_paragraphs,
+                    completed = sent_start + c_idx + 1
+                    progress_data = {
+                        "progress": {
+                            "current": completed,
+                            "total": total,
+                            "percent": round(completed / total * 100),
+                            "sentence": sentence[:20] + "..." if len(sentence) > 20 else sentence,
+                            "paragraph": p_idx + 1,
+                            "total_paragraphs": num_paragraphs,
+                        }
                     }
-                }
-                yield f"data: {json.dumps(progress_data, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps(progress_data, ensure_ascii=False)}\n\n"
+
                 print(f"[声音库进度] 段落 {p_idx+1}/{num_paragraphs} 完成 (句 {sent_start+1}-{sent_end}/{total}): {paragraph[:30]}...")
 
             # 合并音频

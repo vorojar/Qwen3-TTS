@@ -18,6 +18,7 @@ function stopGeneration() {
   sentenceTexts = [];
   sentenceInstructs = [];
   sentenceVoiceConfigs = [];
+  sentenceParagraphBreaks = [];
   decodedPcmCache = [];
   selectedSentenceIndex = -1;
   undoStack = [];
@@ -187,31 +188,14 @@ async function generateWithProgress(url, btn, statusEl) {
         }
 
         if (data.progress) {
-          const {
-            current,
-            total,
-            percent,
-            paragraph,
-            total_paragraphs,
-            generating,
-          } = data.progress;
-          if (generating) {
-            // 段落开始生成：显示"段落 X/Y 生成中..."
-            if (total_paragraphs > 1) {
-              statusEl.textContent = `${t("status.generating")} ${t("status.paragraph")} ${paragraph}/${total_paragraphs}`;
-            } else {
-              statusEl.textContent = t("status.generating");
-            }
+          const { current, total, percent, paragraph, total_paragraphs } =
+            data.progress;
+          btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${current}/${total} ${t("stats.sentences")} (${percent}%)</span>`;
+          if (total_paragraphs > 1) {
+            statusEl.textContent = `${t("status.generating")} ${t("status.paragraph")} ${paragraph}/${total_paragraphs} — ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
           } else {
-            // 段落完成：更新句子进度
-            btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${current}/${total} ${t("stats.sentences")} (${percent}%)</span>`;
-            if (total_paragraphs > 1) {
-              statusEl.textContent = `${t("status.generating")} ${t("status.paragraph")} ${paragraph}/${total_paragraphs} — ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
-            } else {
-              statusEl.textContent = `${t("status.generating")} ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
-            }
+            statusEl.textContent = `${t("status.generating")} ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
           }
-          // 更新句子样式
           updateGeneratingProgress(current);
         }
 
@@ -219,7 +203,6 @@ async function generateWithProgress(url, btn, statusEl) {
           eventSource.close();
           currentEventSource = null;
           isGenerating = false;
-          currentSubtitles = data.subtitles || null;
 
           // 保存每句音频和文本
           if (data.sentence_audios) {
@@ -235,20 +218,17 @@ async function generateWithProgress(url, btn, statusEl) {
             if (lastGenerateParams)
               lastGenerateParams.clone_prompt_id = data.clone_prompt_id;
           }
+
+          // 用前端重建音频（加句间停顿），保证字幕和音频一致
+          const merged = mergeAllSentenceAudios();
+          currentSubtitles = merged.subtitles;
+          const audioUrl = URL.createObjectURL(merged.blob);
+
           saveSession(); // 持久化
 
           // 始终显示句子编辑视图
           selectedSentenceIndex = -1;
           showSentenceEditorView();
-
-          // 将 base64 转为 blob URL
-          const binaryString = atob(data.audio);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          const blob = new Blob([bytes], { type: "audio/wav" });
-          const audioUrl = URL.createObjectURL(blob);
 
           // 恢复按钮
           btn.onclick = enterPreviewMode;
@@ -333,32 +313,17 @@ async function generateWithProgressPost(url, formData, btn, statusEl) {
               updateGeneratingProgress(0);
             }
             if (data.progress) {
-              const {
-                current,
-                total,
-                percent,
-                paragraph,
-                total_paragraphs,
-                generating,
-              } = data.progress;
-              if (generating) {
-                if (total_paragraphs > 1) {
-                  statusEl.textContent = `${t("status.generating")} ${t("status.paragraph")} ${paragraph}/${total_paragraphs}`;
-                } else {
-                  statusEl.textContent = t("status.generating");
-                }
+              const { current, total, percent, paragraph, total_paragraphs } =
+                data.progress;
+              btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${current}/${total} ${t("stats.sentences")} (${percent}%)</span>`;
+              if (total_paragraphs > 1) {
+                statusEl.textContent = `${t("status.generating")} ${t("status.paragraph")} ${paragraph}/${total_paragraphs} — ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
               } else {
-                btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${current}/${total} ${t("stats.sentences")} (${percent}%)</span>`;
-                if (total_paragraphs > 1) {
-                  statusEl.textContent = `${t("status.generating")} ${t("status.paragraph")} ${paragraph}/${total_paragraphs} — ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
-                } else {
-                  statusEl.textContent = `${t("status.generating")} ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
-                }
+                statusEl.textContent = `${t("status.generating")} ${current}/${total} ${t("stats.sentences")} (${percent}%)`;
               }
               updateGeneratingProgress(current);
             }
             if (data.done) {
-              currentSubtitles = data.subtitles || null;
               // 保存每句音频和文本
               if (data.sentence_audios) {
                 sentenceAudios = data.sentence_audios;
@@ -373,15 +338,14 @@ async function generateWithProgressPost(url, formData, btn, statusEl) {
                 if (lastGenerateParams)
                   lastGenerateParams.clone_prompt_id = data.clone_prompt_id;
               }
+
+              // 用前端重建音频（加句间停顿），保证字幕和音频一致
+              const merged = mergeAllSentenceAudios();
+              currentSubtitles = merged.subtitles;
+
               saveSession(); // 持久化
-              const binaryString = atob(data.audio);
-              const bytes = new Uint8Array(binaryString.length);
-              for (let i = 0; i < binaryString.length; i++)
-                bytes[i] = binaryString.charCodeAt(i);
               result = {
-                audioUrl: URL.createObjectURL(
-                  new Blob([bytes], { type: "audio/wav" }),
-                ),
+                audioUrl: URL.createObjectURL(merged.blob),
                 stats: data.stats,
               };
             }
@@ -445,6 +409,7 @@ async function generate() {
   sentenceTexts = [];
   sentenceInstructs = [];
   sentenceVoiceConfigs = [];
+  sentenceParagraphBreaks = [];
   decodedPcmCache = [];
   selectedSentenceIndex = -1;
   clonePromptId = null;
@@ -783,7 +748,7 @@ async function generateFromPreview() {
   const editedTexts = [...sentenceTexts];
   const editedInstructs = [...sentenceInstructs];
   const editedVoiceConfigs = [...sentenceVoiceConfigs];
-  document.getElementById("text-input").value = editedTexts.join("");
+  document.getElementById("text-input").value = joinSentencesWithParagraphs();
 
   // 退出预编辑状态
   isPreviewing = false;
