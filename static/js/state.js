@@ -40,6 +40,9 @@ let sentencePreviewIndex = -1;
 // 统计数据（数值，语言无关）
 let lastStatsData = null; // {char_count, sentence_count, elapsed, avg_per_char}
 
+// 重新生成前的结果快照（用于"返回结果"恢复）
+let savedResultState = null;
+
 function renderStats() {
   // stats 已移到右上角 status-message，由 showSentenceEditorView 渲染
 }

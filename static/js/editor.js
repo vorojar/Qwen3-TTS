@@ -178,6 +178,10 @@ function hideProgressView() {
   const toolbar = document.getElementById("sentence-toolbar");
   toolbar.style.display = "none";
   toolbar.classList.add("hidden");
+  // 仅在没有保存结果时隐藏（exitPreviewMode 调用时需保留）
+  if (!savedResultState) {
+    document.getElementById("regen-back-btn").style.display = "none";
+  }
 }
 
 // 显示句子编辑视图
@@ -293,6 +297,7 @@ function showSentenceEditorView() {
     const toolbar = document.getElementById("sentence-toolbar");
     toolbar.style.display = "none";
     toolbar.classList.add("hidden");
+    document.getElementById("regen-back-btn").style.display = "none";
   } else if (previewing) {
     // 预编辑模式：左侧"返回编辑"，右侧"生成语音"
     actionBar.classList.remove("justify-end");
@@ -310,11 +315,12 @@ function showSentenceEditorView() {
     toolbar.style.width = "auto";
     document.getElementById("preview-back-btn").style.display = "";
     document.getElementById("analyze-btn").style.display = "";
-    const viewToggle2 = document.getElementById("toolbar-view-toggle");
-    if (viewToggle2) viewToggle2.style.display = "none";
+    document.getElementById("toolbar-regen-all").style.display = "none";
     document.getElementById("toolbar-pace").style.display = "none";
   } else {
-    // 生成后：清除状态消息，隐藏生成按钮，显示句子工具栏
+    // 生成后：新结果替代旧快照
+    savedResultState = null;
+    // 清除状态消息，隐藏生成按钮，显示句子工具栏
     actionBar.classList.remove("justify-between");
     actionBar.classList.add("justify-end");
     // 右上角显示统计信息
@@ -332,12 +338,8 @@ function showSentenceEditorView() {
     toolbar.style.width = "100%";
     document.getElementById("preview-back-btn").style.display = "none";
     document.getElementById("analyze-btn").style.display = "none";
-    const viewToggle = document.getElementById("toolbar-view-toggle");
-    if (viewToggle) {
-      viewToggle.style.display = "";
-      viewToggle.innerHTML = `<span>${t("btn.editView")}</span>`;
-      isEditViewMode = false;
-    }
+    document.getElementById("toolbar-regen-all").style.display = "";
+    document.getElementById("regen-back-btn").style.display = "none";
     document.getElementById("toolbar-pace").style.display = "";
     // 同步停顿控件值
     document.getElementById("st-pace-label").textContent = t("label.pace");
@@ -349,38 +351,70 @@ function showSentenceEditorView() {
   }
 }
 
-// 编辑视图 ↔ 结果视图切换（纯显示切换，不改变任何状态）
-let isEditViewMode = false;
-
-function toggleEditView() {
-  const textInput = document.getElementById("text-input");
-  const progressView = document.getElementById("progress-view");
-  const btn = document.getElementById("toolbar-view-toggle");
-
-  if (isEditViewMode) {
-    // 编辑视图 → 结果视图
-    textInput.classList.add("hidden");
-    progressView.style.display = "flex";
-    progressView.classList.remove("hidden");
-    btn.innerHTML = `<span>${t("btn.editView")}</span>`;
-    isEditViewMode = false;
-  } else {
-    // 结果视图 → 编辑视图：同步文本到 textarea
-    textInput.value = sentenceTexts.length > 0
-      ? joinSentencesWithParagraphs()
-      : textInput.value;
-    textInput.classList.remove("hidden");
-    progressView.style.display = "none";
-    progressView.classList.add("hidden");
-    btn.innerHTML = `<span>${t("btn.resultView")}</span>`;
-    isEditViewMode = true;
-    updateCharCount();
+// 重新生成：回到 textarea 编辑状态，保留已有结果可返回
+function regenerateAll() {
+  // 保存当前结果快照，供"返回结果"恢复
+  if (sentenceAudios.length > 0) {
+    savedResultState = {
+      sentenceTexts: [...sentenceTexts],
+      sentenceAudios: [...sentenceAudios],
+      sentenceInstructs: [...sentenceInstructs],
+      sentenceVoiceConfigs: [...sentenceVoiceConfigs],
+      sentenceParagraphBreaks: [...sentenceParagraphBreaks],
+      sentenceCharacters: [...sentenceCharacters],
+      characterVoiceMap: {...characterVoiceMap},
+      lastStatsData: lastStatsData ? {...lastStatsData} : null,
+    };
   }
+
+  const textInput = document.getElementById("text-input");
+  textInput.value = sentenceTexts.length > 0 ? joinSentencesWithParagraphs() : textInput.value;
+
+  // 切到 textarea
+  textInput.classList.remove("hidden");
+  const progressView = document.getElementById("progress-view");
+  progressView.style.display = "none";
+  progressView.classList.add("hidden");
+
+  // 隐藏句子工具栏
+  const toolbar = document.getElementById("sentence-toolbar");
+  toolbar.style.display = "none";
+  toolbar.classList.add("hidden");
+
+  // 恢复生成按钮为"分句预览"
+  resetToPreviewButton();
+  const genBtn = document.getElementById("generate-btn");
+  genBtn.style.display = "";
+  genBtn.disabled = false;
+
+  // 显示"返回结果"按钮
+  document.getElementById("regen-back-btn").style.display = "";
+
+  document.getElementById("status-message").textContent = "";
+  updateCharCount();
+}
+
+// 返回之前的结果视图（不重新生成）
+function backToResults() {
+  if (savedResultState) {
+    sentenceTexts = savedResultState.sentenceTexts;
+    sentenceAudios = savedResultState.sentenceAudios;
+    sentenceInstructs = savedResultState.sentenceInstructs;
+    sentenceVoiceConfigs = savedResultState.sentenceVoiceConfigs;
+    sentenceParagraphBreaks = savedResultState.sentenceParagraphBreaks;
+    sentenceCharacters = savedResultState.sentenceCharacters;
+    characterVoiceMap = savedResultState.characterVoiceMap;
+    lastStatsData = savedResultState.lastStatsData;
+    savedResultState = null;
+  }
+  document.getElementById("regen-back-btn").style.display = "none";
+  showSentenceEditorView();
 }
 
 function clearAndRestart() {
   if (!confirm(t("confirm.newProject"))) return;
   finishEditing();
+  savedResultState = null;
   // 清空所有状态
   sentenceAudios = [];
   sentenceTexts = [];
@@ -936,6 +970,7 @@ async function enterPreviewMode() {
   sentenceAudios = [];
   isPreviewing = true;
   selectedSentenceIndex = -1;
+  document.getElementById("regen-back-btn").style.display = "none";
   showSentenceEditorView();
 }
 
@@ -962,6 +997,8 @@ function exitPreviewMode() {
   sentenceParagraphBreaks = [];
   sentenceCharacters = [];
   characterVoiceMap = {};
+  // 有保存的结果快照时保留"返回结果"按钮
+  document.getElementById("regen-back-btn").style.display = savedResultState ? "" : "none";
   hideProgressView();
   // 恢复操作栏布局
   const actionBar = document.getElementById("action-bar");

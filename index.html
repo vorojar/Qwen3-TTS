@@ -95,8 +95,8 @@
                             <button id="analyze-btn" onclick="analyzeCharacters()" class="sentence-new-btn analyze-btn-style" style="display:none">
                                 ✨ <span data-i18n="btn.analyzeCharacters">智能分析</span>
                             </button>
-                            <button id="toolbar-view-toggle" onclick="toggleEditView()" class="sentence-new-btn">
-                                <span data-i18n="btn.editView">编辑视图</span>
+                            <button id="toolbar-regen-all" onclick="regenerateAll()" class="sentence-new-btn">
+                                <span data-i18n="btn.regenAll">重新生成</span>
                             </button>
                             <div id="toolbar-pace" style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:#718096">
                                 <span id="st-pace-label"></span>
@@ -107,6 +107,9 @@
                                     onchange="saveSession()">
                             </div>
                         </div>
+                        <button id="regen-back-btn" onclick="backToResults()" class="sentence-new-btn" style="display:none;margin-right:auto">
+                            ← <span data-i18n="btn.backToResults">返回结果</span>
+                        </button>
                         <button id="generate-btn" onclick="enterPreviewMode()" class="btn-primary">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <polygon points="5 3 19 12 5 21 5 3"></polygon>
