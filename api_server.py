@@ -172,6 +172,29 @@ def extract_vocals(audio_np, sample_rate):
         print(f"[Demucs] 提取失败，使用原音频: {e}")
         return audio_np, sample_rate
 
+# ===== 响度标准化 =====
+try:
+    import pyloudnorm
+    _loudness_meter = pyloudnorm.Meter(24000)
+except ImportError:
+    _loudness_meter = None
+
+TARGET_LUFS = -16.0  # 有声书/流媒体行业标准
+
+def normalize_loudness(audio_np, sample_rate=24000):
+    """将音频响度标准化到 TARGET_LUFS（-16 LUFS）"""
+    if _loudness_meter is None:
+        return audio_np
+    try:
+        if len(audio_np) < sample_rate * 0.1:  # 短于 0.1 秒，跳过
+            return audio_np
+        loudness = _loudness_meter.integrated_loudness(audio_np)
+        if loudness == float('-inf'):  # 纯静音
+            return audio_np
+        return pyloudnorm.normalize.loudness(audio_np, loudness, TARGET_LUFS)
+    except Exception:
+        return audio_np
+
 # 延迟导入：torch 和 qwen_tts 启动开销大，首次使用时才加载
 torch = None
 Qwen3TTSModel = None
@@ -191,12 +214,19 @@ def _ensure_qwen_tts():
 
 
 def _inference_call(fn, *args, **kwargs):
-    """在 torch.inference_mode 下调用推理函数（比 no_grad 更快），自动正规化 text 参数"""
+    """在 torch.inference_mode 下调用推理函数，自动正规化 text + 响度标准化"""
     _ensure_torch()
     if 'text' in kwargs and kwargs['text'] is not None:
         kwargs['text'] = normalize_for_tts(kwargs['text'])
     with torch.inference_mode():
-        return fn(*args, **kwargs)
+        result = fn(*args, **kwargs)
+    # 自动响度标准化：返回值为 (wavs_list, sample_rate) 时，逐句标准化到 -16 LUFS
+    if isinstance(result, tuple) and len(result) == 2:
+        wavs, sr = result
+        if isinstance(wavs, list) and len(wavs) > 0 and isinstance(wavs[0], np.ndarray):
+            wavs = [normalize_loudness(w, sr) for w in wavs]
+            return wavs, sr
+    return result
 
 
 def get_generation_stats(text: str, start_time: float, mode: str = "TTS") -> dict:

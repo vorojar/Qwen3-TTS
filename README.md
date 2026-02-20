@@ -69,7 +69,9 @@ Reference audio uploaded for voice cloning is automatically cleaned in three sta
 | Silence trimming | Silero VAD | Remove leading/trailing silence, compress long internal pauses |
 | Text normalization | wetext | Convert numbers/dates/currency to spoken form for TTS |
 
-All three are **optional dependencies** — if not installed, the pipeline gracefully skips that stage.
+All are **optional dependencies** — if not installed, the pipeline gracefully skips that stage.
+
+**Loudness normalization**: Every generated sentence is automatically normalized to **-16 LUFS** (audiobook/streaming standard) via pyloudnorm. Ensures consistent volume across different speakers and voice modes — no more jarring volume jumps when mixing voices.
 
 ### More Features
 
@@ -125,6 +127,7 @@ pip install -U qwen-tts fastapi uvicorn python-multipart soundfile numpy torch
 pip install wetext        # Chinese text normalization (numbers/dates → spoken form)
 pip install silero-vad    # Silence trimming for clone reference audio
 pip install demucs        # Vocal extraction from noisy/music-mixed reference audio
+pip install pyloudnorm    # Loudness normalization (-16 LUFS) for consistent volume
 ```
 
 ### Download Models
@@ -310,7 +313,8 @@ curl http://localhost:8001/languages
 - Demucs (Meta) vocal extraction: automatically removes background music/noise from clone reference audio (80MB model, GPU ~1s/10s audio)
 - Silero VAD silence trimming: removes leading/trailing silence and compresses excessive internal pauses from reference audio
 - wetext Chinese text normalization: converts numbers, dates, currency, percentages to spoken form before TTS (e.g., "100元" → "一百元")
-- All three are optional dependencies — graceful fallback if not installed
+- pyloudnorm loudness normalization: every generated sentence normalized to -16 LUFS, consistent volume across all speakers/modes
+- All four are optional dependencies — graceful fallback if not installed
 
 **UI Improvements**
 - Edit/Result view toggle: switch between text editing and sentence editor without losing any state
