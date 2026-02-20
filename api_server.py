@@ -265,7 +265,7 @@ def load_model_sync(model_type: str):
 
         # GPU 预热：首次推理触发 CUDA kernel 编译，避免用户等待
         # 必须在 model_status = "loaded" 之前执行，否则前端会提前发起生成请求导致并发冲突
-        if model_type in ("custom", "design") and device_map.startswith("cuda"):
+        if model_type in ("custom", "design", "clone") and device_map.startswith("cuda"):
             try:
                 print(f"[预热] 正在预热 {config['name']} 模型...")
                 warmup_start = time.time()
@@ -274,6 +274,23 @@ def load_model_sync(model_type: str):
                         model.generate_custom_voice(text="test", speaker="vivian", language="Chinese")
                     elif model_type == "design":
                         model.generate_voice_design(text="test", language="Chinese", instruct="normal voice")
+                    elif model_type == "clone":
+                        # clone 需要 voice prompt，用 1 秒静音做 dummy
+                        dummy_audio = np.zeros(24000, dtype=np.float32)
+                        dummy_path = os.path.join(tempfile.gettempdir(), "warmup_dummy.wav")
+                        sf.write(dummy_path, dummy_audio, 24000, format='WAV')
+                        try:
+                            prompts = model.create_voice_clone_prompt(
+                                ref_audio=dummy_path,
+                                x_vector_only_mode=True,
+                            )
+                            model.generate_voice_clone(
+                                text="test",
+                                language="Chinese",
+                                voice_clone_prompt=prompts,
+                            )
+                        finally:
+                            os.unlink(dummy_path)
                 print(f"[预热] {config['name']} 预热完成 ({time.time() - warmup_start:.1f}s)")
             except Exception as e:
                 print(f"[预热] {config['name']} 预热跳过: {e}")
