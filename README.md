@@ -59,6 +59,18 @@ Powered by Qwen3-4B, automatically identifies characters and emotions in text. C
 
 Sidebar project tree navigation, multi-project multi-chapter organization. Project-level character-voice mapping shared across chapters. IndexedDB persistence — refresh without losing work.
 
+### Audio Preprocessing Pipeline
+
+Reference audio uploaded for voice cloning is automatically cleaned in three stages:
+
+| Stage | Tool | Effect |
+|-------|------|--------|
+| Vocal extraction | Demucs (Meta) | Remove background music, noise, leaving clean vocals |
+| Silence trimming | Silero VAD | Remove leading/trailing silence, compress long internal pauses |
+| Text normalization | wetext | Convert numbers/dates/currency to spoken form for TTS |
+
+All three are **optional dependencies** — if not installed, the pipeline gracefully skips that stage.
+
 ### More Features
 
 - **Waveform visualizer** — WaveSurfer.js waveform player, highlights current sentence during playback
@@ -69,6 +81,8 @@ Sidebar project tree navigation, multi-project multi-chapter organization. Proje
 - **Keyboard shortcuts** — Space=play, arrows=navigate, Enter=regenerate, Ctrl+Z=undo
 - **REST API** — Full HTTP API for integration
 - **Voice prompt caching** — Disk-cached voice prompts for faster subsequent generation
+- **Batch inference** — Multiple sentences generated per model call (BATCH_SIZE=16), ~2x faster
+- **Edit/Result view toggle** — Switch between text editing and sentence results without losing state
 
 ## Supported Languages
 
@@ -104,6 +118,13 @@ Chinese, English, Japanese, Korean, German, French, Russian, Portuguese, Spanish
 
 ```bash
 pip install -U qwen-tts fastapi uvicorn python-multipart soundfile numpy torch
+```
+
+**Optional (recommended):**
+```bash
+pip install wetext        # Chinese text normalization (numbers/dates → spoken form)
+pip install silero-vad    # Silence trimming for clone reference audio
+pip install demucs        # Vocal extraction from noisy/music-mixed reference audio
 ```
 
 ### Download Models
@@ -277,6 +298,24 @@ curl http://localhost:8001/languages
 
 ## Changelog
 
+### v0.5.0 (2025-02-20)
+
+**Performance Optimization**
+- Batch inference: multiple sentences per model call (BATCH_SIZE=16), ~2x speedup for preset mode
+- SDPA (Scaled Dot-Product Attention) enabled via `attn_implementation="sdpa"` for fused attention kernels
+- GPU warmup: dummy forward pass after model loading prevents first-generation slowdown
+- `torch.inference_mode()` wrapper for all inference entry points
+
+**Audio Preprocessing Pipeline**
+- Demucs (Meta) vocal extraction: automatically removes background music/noise from clone reference audio (80MB model, GPU ~1s/10s audio)
+- Silero VAD silence trimming: removes leading/trailing silence and compresses excessive internal pauses from reference audio
+- wetext Chinese text normalization: converts numbers, dates, currency, percentages to spoken form before TTS (e.g., "100元" → "一百元")
+- All three are optional dependencies — graceful fallback if not installed
+
+**UI Improvements**
+- Edit/Result view toggle: switch between text editing and sentence editor without losing any state
+- Progress simulation: smooth per-sentence highlighting during batch generation (asymptotic ease-out curve)
+
 ### v0.4.0 (2025-02-19)
 
 **Sentence Preview Mode**
@@ -365,7 +404,7 @@ curl http://localhost:8001/languages
 | 🔲 | Long text import | TXT/EPUB/Word file import |
 | 🔲 | Whisper auto-transcription | Auto-transcribe reference audio text |
 | 🔲 | Speed/pitch control | Per-sentence speed and pitch adjustment |
-| 🔲 | Audio post-processing | Noise reduction, EQ, loudness normalization |
+| ✅ | Audio preprocessing | Demucs vocal extraction + VAD silence trimming + text normalization |
 | 🔲 | Pronunciation dictionary | Custom pronunciation for names/terms |
 | 🔲 | Real-time streaming | Pending upstream SDK support |
 

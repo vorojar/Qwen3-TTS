@@ -88,17 +88,89 @@ def trim_audio_silence(audio_np, sample_rate=24000, pad_ms=50, max_silence_ms=30
         return audio_np  # VAD 失败时不影响正常流程
 
 def clean_audio_file(audio_path):
-    """清洗音频文件：去除首尾静音 + 压缩中间过长停顿，原地覆写"""
+    """
+    清洗参考音频（原地覆写）：
+    1. Demucs 提取纯净人声（去背景音乐/噪音）
+    2. Silero VAD 去除首尾静音 + 压缩中间过长停顿
+    """
     try:
         audio_np, sr = sf.read(audio_path)
         if len(audio_np.shape) > 1:
             audio_np = audio_np[:, 0]  # 转单声道
-        cleaned = trim_audio_silence(audio_np, sr)
-        if len(cleaned) < len(audio_np):
-            sf.write(audio_path, cleaned, sr, format='WAV')
-            print(f"[VAD] 清洗参考音频: {len(audio_np)/sr:.1f}s → {len(cleaned)/sr:.1f}s")
+        original_len = len(audio_np)
+
+        # 第 1 步：Demucs 人声提取
+        audio_np, sr = extract_vocals(audio_np, sr)
+
+        # 第 2 步：VAD 静音裁切
+        audio_np = trim_audio_silence(audio_np, sr)
+
+        if len(audio_np) < original_len:
+            sf.write(audio_path, audio_np, sr, format='WAV')
+            print(f"[音频清洗] {original_len/sr:.1f}s → {len(audio_np)/sr:.1f}s")
     except Exception as e:
-        print(f"[VAD] 清洗失败，使用原音频: {e}")
+        print(f"[音频清洗] 失败，使用原音频: {e}")
+
+# ===== Demucs：人声提取 =====
+_demucs_model = None
+
+def extract_vocals(audio_np, sample_rate):
+    """用 Demucs 从音频中提取纯净人声，返回 (vocals_np, sample_rate)"""
+    global _demucs_model
+    try:
+        from demucs.pretrained import get_model
+        from demucs.apply import apply_model
+        _ensure_torch()
+
+        if _demucs_model is None:
+            _demucs_model = get_model('htdemucs')
+            _demucs_model.eval()
+            # 使用与 TTS 模型相同的设备
+            device = next(_demucs_model.parameters()).device
+            if torch.cuda.is_available():
+                _demucs_model.cuda()
+            print(f"[Demucs] 模型已加载 ({next(_demucs_model.parameters()).device})")
+
+        device = next(_demucs_model.parameters()).device
+        model_sr = _demucs_model.samplerate  # demucs 要求的采样率（通常 44100）
+
+        # 转为 torch tensor: (channels, samples)
+        wav = torch.from_numpy(audio_np).float()
+        if wav.dim() == 1:
+            wav = wav.unsqueeze(0)  # mono → (1, samples)
+
+        # 重采样到 demucs 要求的采样率
+        if sample_rate != model_sr:
+            import torchaudio
+            wav = torchaudio.transforms.Resample(sample_rate, model_sr)(wav)
+
+        # 双声道（demucs 需要 stereo）
+        if wav.shape[0] == 1:
+            wav = wav.repeat(2, 1)
+
+        # 推理
+        with torch.no_grad():
+            sources = apply_model(_demucs_model, wav.unsqueeze(0).to(device), split=True)[0]
+            # sources: [drums, bass, other, vocals]
+            vocals_idx = _demucs_model.sources.index('vocals')
+            vocals = sources[vocals_idx].cpu()
+
+        # 转回 mono
+        vocals_mono = vocals.mean(dim=0)
+
+        # 重采样回原采样率
+        if model_sr != sample_rate:
+            import torchaudio
+            vocals_mono = torchaudio.transforms.Resample(model_sr, sample_rate)(vocals_mono.unsqueeze(0)).squeeze(0)
+
+        print(f"[Demucs] 人声提取完成")
+        return vocals_mono.numpy(), sample_rate
+
+    except ImportError:
+        return audio_np, sample_rate  # demucs 未安装，跳过
+    except Exception as e:
+        print(f"[Demucs] 提取失败，使用原音频: {e}")
+        return audio_np, sample_rate
 
 # 延迟导入：torch 和 qwen_tts 启动开销大，首次使用时才加载
 torch = None
