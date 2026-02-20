@@ -7,6 +7,70 @@ let currentSubtitles = null;
 let generateStartTime = 0;
 let generateTimerInterval = null;
 
+// 模拟进度：批量推理时按估算时间逐句推进高亮
+let progressSimTimer = null;
+let progressSimRealProgress = 0;
+
+function startProgressSimulation(btn, statusEl) {
+  stopProgressSimulation();
+
+  const texts = sentenceTexts;
+  const total = texts.length;
+  if (total === 0) return;
+
+  // 估算总时间（仅用于控制曲线速率，不需要精确）
+  const totalChars = texts.reduce((sum, s) => sum + s.length, 0);
+  const estimatedPerChar = lastStatsData?.avg_per_char || 0.06;
+  const totalEstimatedTime = Math.max(totalChars * estimatedPerChar, 3);
+
+  // 渐近曲线速率：在估算时间到达时显示约 70% 进度
+  // fraction = 1 - e^(-rate * elapsed), rate = 1.2 / estimatedTime
+  // 永远不会自己到 100%，只有真实进度才能推到最后
+  const rate = 0.8 / totalEstimatedTime;
+
+  const simStart = Date.now();
+  progressSimRealProgress = 0;
+
+  const stopSvg =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg>';
+
+  // 立即高亮第一句
+  updateGeneratingProgress(0);
+
+  progressSimTimer = setInterval(() => {
+    if (!isGenerating) {
+      stopProgressSimulation();
+      return;
+    }
+
+    const elapsed = (Date.now() - simStart) / 1000;
+    const fraction = 1 - Math.exp(-rate * elapsed);
+    // 模拟进度最多到最后一句（显示为"正在生成"），不会标记为"完成"
+    let estimated = Math.min(Math.floor(fraction * total), total - 1);
+    estimated = Math.max(estimated, 0);
+
+    // 不低于服务器真实进度
+    const display = Math.max(estimated, progressSimRealProgress);
+
+    updateGeneratingProgress(display);
+
+    // 更新按钮和状态栏
+    const percent = Math.round((display / total) * 100);
+    btn.innerHTML = `${stopSvg}<span>${display}/${total} ${t("stats.sentences")} (${percent}%)</span>`;
+    statusEl.innerHTML = genStatusText(
+      `${t("status.generating")} ${display}/${total} ${t("stats.sentences")} (${percent}%)`,
+    );
+  }, 500);
+}
+
+function stopProgressSimulation() {
+  if (progressSimTimer) {
+    clearInterval(progressSimTimer);
+    progressSimTimer = null;
+  }
+  progressSimRealProgress = 0;
+}
+
 function startGenerateTimer() {
   generateStartTime = Date.now();
   stopGenerateTimer();
@@ -44,6 +108,7 @@ function stopGeneration() {
   }
   isGenerating = false;
   stopGenerateTimer();
+  stopProgressSimulation();
   isPreviewing = false;
   generatingProgress = -1;
   currentSubtitles = null;
@@ -62,10 +127,11 @@ function stopGeneration() {
     audioElement.removeEventListener("timeupdate", _sentencePreviewEndHandler);
     _sentencePreviewEndHandler = null;
   }
-  // 隐藏进度视图
+  // 隐藏进度视图（清除内联 style.display 避免覆盖 CSS class）
   const textInput = document.getElementById("text-input");
   const progressView = document.getElementById("progress-view");
   textInput.classList.remove("hidden");
+  progressView.style.display = "";
   progressView.classList.add("hidden");
 
   const btn = document.getElementById("generate-btn");
@@ -210,35 +276,17 @@ async function generateWithProgress(url, btn, statusEl) {
 
         if (data.started) {
           totalSentences = data.total;
-          if (data.paragraphs > 1) {
-            statusEl.innerHTML = genStatusText(
-              `${t("status.generating")} ${t("status.paragraph")} 1/${data.paragraphs}`,
-            );
-          } else {
-            statusEl.innerHTML = genStatusText(t("status.generating"));
-          }
           // 显示停止按钮
           btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${t("btn.stop")}</span>`;
           btn.disabled = false;
           btn.onclick = stopGeneration;
-          // 标记第一句正在生成
-          updateGeneratingProgress(0);
+          // 启动模拟进度（按字数估算逐句推进高亮）
+          startProgressSimulation(btn, statusEl);
         }
 
         if (data.progress) {
-          const { current, total, percent, paragraph, total_paragraphs } =
-            data.progress;
-          btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${current}/${total} ${t("stats.sentences")} (${percent}%)</span>`;
-          if (total_paragraphs > 1) {
-            statusEl.innerHTML = genStatusText(
-              `${t("status.generating")} ${t("status.paragraph")} ${paragraph}/${total_paragraphs} — ${current}/${total} ${t("stats.sentences")} (${percent}%)`,
-            );
-          } else {
-            statusEl.innerHTML = genStatusText(
-              `${t("status.generating")} ${current}/${total} ${t("stats.sentences")} (${percent}%)`,
-            );
-          }
-          updateGeneratingProgress(current);
+          // 只更新真实进度，UI 由模拟定时器驱动
+          progressSimRealProgress = data.progress.current;
         }
 
         if (data.done) {
@@ -246,6 +294,7 @@ async function generateWithProgress(url, btn, statusEl) {
           currentEventSource = null;
           isGenerating = false;
           stopGenerateTimer();
+          stopProgressSimulation();
 
           // 保存每句音频和文本
           if (data.sentence_audios) {
@@ -286,6 +335,7 @@ async function generateWithProgress(url, btn, statusEl) {
           currentEventSource = null;
           isGenerating = false;
           stopGenerateTimer();
+          stopProgressSimulation();
           hideProgressView();
           btn.onclick = enterPreviewMode;
           reject(new Error(data.error));
@@ -300,6 +350,7 @@ async function generateWithProgress(url, btn, statusEl) {
       currentEventSource = null;
       isGenerating = false;
       stopGenerateTimer();
+      stopProgressSimulation();
       hideProgressView();
       btn.onclick = enterPreviewMode;
       reject(new Error(t("status.failed")));
@@ -351,29 +402,12 @@ async function generateWithProgressPost(url, formData, btn, statusEl) {
           try {
             const data = JSON.parse(line.slice(6));
             if (data.started) {
-              if (data.paragraphs > 1) {
-                statusEl.innerHTML = genStatusText(
-                  `${t("status.generating")} ${t("status.paragraph")} 1/${data.paragraphs}`,
-                );
-              } else {
-                statusEl.innerHTML = genStatusText(t("status.generating"));
-              }
-              updateGeneratingProgress(0);
+              // 启动模拟进度
+              startProgressSimulation(btn, statusEl);
             }
             if (data.progress) {
-              const { current, total, percent, paragraph, total_paragraphs } =
-                data.progress;
-              btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg><span>${current}/${total} ${t("stats.sentences")} (${percent}%)</span>`;
-              if (total_paragraphs > 1) {
-                statusEl.innerHTML = genStatusText(
-                  `${t("status.generating")} ${t("status.paragraph")} ${paragraph}/${total_paragraphs} — ${current}/${total} ${t("stats.sentences")} (${percent}%)`,
-                );
-              } else {
-                statusEl.innerHTML = genStatusText(
-                  `${t("status.generating")} ${current}/${total} ${t("stats.sentences")} (${percent}%)`,
-                );
-              }
-              updateGeneratingProgress(current);
+              // 只更新真实进度，UI 由模拟定时器驱动
+              progressSimRealProgress = data.progress.current;
             }
             if (data.done) {
               // 保存每句音频和文本
@@ -411,6 +445,7 @@ async function generateWithProgressPost(url, formData, btn, statusEl) {
 
     isGenerating = false;
     stopGenerateTimer();
+    stopProgressSimulation();
     // 始终显示句子编辑视图
     selectedSentenceIndex = -1;
     showSentenceEditorView();
@@ -419,6 +454,7 @@ async function generateWithProgressPost(url, formData, btn, statusEl) {
   } catch (error) {
     isGenerating = false;
     stopGenerateTimer();
+    stopProgressSimulation();
     hideProgressView();
     btn.onclick = enterPreviewMode;
     statusEl.innerHTML = `<span class="text-red-600">${t("status.failed")}: ${error.message}</span>`;

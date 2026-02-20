@@ -310,7 +310,8 @@ function showSentenceEditorView() {
     toolbar.style.width = "auto";
     document.getElementById("preview-back-btn").style.display = "";
     document.getElementById("analyze-btn").style.display = "";
-    document.getElementById("toolbar-new-btn").style.display = "none";
+    const viewToggle2 = document.getElementById("toolbar-view-toggle");
+    if (viewToggle2) viewToggle2.style.display = "none";
     document.getElementById("toolbar-pace").style.display = "none";
   } else {
     // 生成后：清除状态消息，隐藏生成按钮，显示句子工具栏
@@ -331,7 +332,12 @@ function showSentenceEditorView() {
     toolbar.style.width = "100%";
     document.getElementById("preview-back-btn").style.display = "none";
     document.getElementById("analyze-btn").style.display = "none";
-    document.getElementById("toolbar-new-btn").style.display = "";
+    const viewToggle = document.getElementById("toolbar-view-toggle");
+    if (viewToggle) {
+      viewToggle.style.display = "";
+      viewToggle.innerHTML = `<span>${t("btn.editView")}</span>`;
+      isEditViewMode = false;
+    }
     document.getElementById("toolbar-pace").style.display = "";
     // 同步停顿控件值
     document.getElementById("st-pace-label").textContent = t("label.pace");
@@ -340,6 +346,35 @@ function showSentenceEditorView() {
         ? t("label.paceOff")
         : pausePaceMultiplier.toFixed(1) + "x";
     document.getElementById("st-pace-range").value = pausePaceMultiplier;
+  }
+}
+
+// 编辑视图 ↔ 结果视图切换（纯显示切换，不改变任何状态）
+let isEditViewMode = false;
+
+function toggleEditView() {
+  const textInput = document.getElementById("text-input");
+  const progressView = document.getElementById("progress-view");
+  const btn = document.getElementById("toolbar-view-toggle");
+
+  if (isEditViewMode) {
+    // 编辑视图 → 结果视图
+    textInput.classList.add("hidden");
+    progressView.style.display = "flex";
+    progressView.classList.remove("hidden");
+    btn.innerHTML = `<span>${t("btn.editView")}</span>`;
+    isEditViewMode = false;
+  } else {
+    // 结果视图 → 编辑视图：同步文本到 textarea
+    textInput.value = sentenceTexts.length > 0
+      ? joinSentencesWithParagraphs()
+      : textInput.value;
+    textInput.classList.remove("hidden");
+    progressView.style.display = "none";
+    progressView.classList.add("hidden");
+    btn.innerHTML = `<span>${t("btn.resultView")}</span>`;
+    isEditViewMode = true;
+    updateCharCount();
   }
 }
 
