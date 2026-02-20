@@ -1261,7 +1261,7 @@ async def voice_design_progress(
                     print(f"[设计进度] 批次完成 (句 {1+batch_start+1}-{1+batch_start+len(batch_texts)}/{total})")
 
             else:
-                # 单句或无 clone 模型：逐句用 design 模型（不支持批量）
+                # 单句或无 clone 模型：逐句用 design 模型（不能批量，每次采样声音不同）
                 for idx, sentence in enumerate(all_sentences):
                     if await request.is_disconnected():
                         print(f"[设计进度] 客户端已断开，停止生成 (句 {idx}/{total})")
